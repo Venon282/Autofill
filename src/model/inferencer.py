@@ -42,6 +42,7 @@ class BaseInferencer:
         input_dim = self.config["model"]["args"]["input_dim"]
         self.compute_dataset(input_dim)
         self.save_plot = save_plot
+        self.use_loglog = self.config["training"]["use_loglog"]
 
     @abc.abstractmethod
     def compute_dataset(self, input_dim):
@@ -88,7 +89,10 @@ class BaseInferencer:
             if self.save_plot : 
                 plot_filename = os.path.join(self.output_dir, f"prediction_{name}", f"plot_{k}.png")
                 plt.figure()
-                plt.plot(q_arr, y_arr, label='Prediction')
+                if self.use_loglog :
+                    plt.loglog(q_arr, y_arr, label='LogLog Prediction')
+                else : 
+                    plt.plot(q_arr, y_arr, label='Prediction')
                 plt.xlabel('q')
                 plt.ylabel('y')
                 plt.title(f'Prediction {k}')
@@ -204,6 +208,7 @@ class PairVAEInferencer(BaseInferencer):
             transformer_y_saxs = Pipeline(transform_config["y_saxs"])
 
             if self.mode == 'les_to_saxs':
+                self.config["dataset"]["metadata_filters"]["technique"] = "les"
                 self.dataset = HDF5Dataset(
                     self.data_path,
                     sample_frac=self.sample_frac,
@@ -220,6 +225,7 @@ class PairVAEInferencer(BaseInferencer):
                 self.invert = invert
 
             elif self.mode == 'saxs_to_les':
+                self.config["dataset"]["metadata_filters"]["technique"] = "saxs"
                 self.dataset = HDF5Dataset(
                     self.data_path,
                     sample_frac=self.sample_frac,
@@ -236,6 +242,7 @@ class PairVAEInferencer(BaseInferencer):
                 self.invert = invert
 
             elif self.mode == 'les_to_les':
+                self.config["dataset"]["metadata_filters"]["technique"] = "les"
                 self.dataset = HDF5Dataset(
                     self.data_path,
                     sample_frac=self.sample_frac,
@@ -252,6 +259,7 @@ class PairVAEInferencer(BaseInferencer):
                 self.invert = invert
 
             elif self.mode == 'saxs_to_saxs':
+                self.config["dataset"]["metadata_filters"]["technique"] = "saxs"
                 self.dataset = HDF5Dataset(
                     self.data_path,
                     sample_frac=self.sample_frac,

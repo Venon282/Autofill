@@ -293,6 +293,7 @@ Le script `05_infer.py` permet de lancer l'inférence avec les modèles VAE ou P
 **Utilisation générale** :
 ```bash
 python scripts/05_infer.py \
+  --outputdir <CHEMIN_ENREGISTREMENT> \
   --checkpoint <CHEMIN_CHECKPOINT> \
   --data_path <FICHIER_DONNÉES> \
   [--data_dir <DOSSIER_DONNÉES>] \
@@ -305,22 +306,28 @@ python scripts/05_infer.py \
 | Argument           | Obligatoire | Description                                    |
 |--------------------|-------------|------------------------------------------------|
 | `-c/--checkpoint`  | ✓ | Chemin vers le fichier de checkpoint (.ckpt)   |
+| `-o/--outputdir`  | ✓ | Chemin vers le dossier d'enregistrement  |
 | `-d/--data_path`   | ✓ | Chemin vers les données d'entrée (.h5 ou .csv) |
-| `--mode`           | PairVAE only | `les_to_saxs` ou `saxs_to_les` pour le PairVAE |
+| `-s/--sample_frac`   | ❌  | Fraction du dataset à utiliser (0<s<1) (défaut: 1.0) |
+| `--mode`           | PairVAE only | `les_to_saxs` ou `les_to_les` ou `saxs_to_saxs` ou`saxs_to_les` pour le PairVAE |
 | `-bs/--batch_size` | ❌ | Taille de batch (défaut: 32)                   |
 | `-dd/--data_dir` | ❌ | Chemin vers le dossiers des données txt        |
+| `--plot` | ❌ | Booléen indiquant l'enregistrement des signaux au format png       |
 
 **Exemple pour VAE** :
 ```bash
 python scripts/05_infer.py \
+  --outputdir dossier_test_vae \
   --checkpoint logs/vae_model.ckpt \
   --data_path data/new_data.h5 \
   --batch_size 64
+  --plot
 ```
 
 **Exemple pour PairVAE** :
 ```bash
 python scripts/05_infer.py \
+  --outputdir dossier_test_pairvae \
   --checkpoint logs/pairvae_model.ckpt \
   --data_path data/pair_data.h5 \
   --mode les_to_saxs \

@@ -15,7 +15,7 @@ def parse_args():
     parser.add_argument("--plot", action='store_true', default=False)
     parser.add_argument("-d","--data_path", type=str, required=True,
                         help="Chemin vers le fichier HDF5 ou CSV")
-    parser.add_argument("-s", "--sample_frac", type=float, required=False)
+    parser.add_argument("-s", "--sample_frac", type=float, required=False, default=1.0)
     parser.add_argument("-dd","--data_dir", type=str, default=None,
                         help="Répertoire contenant les fichiers de données du csv")
     parser.add_argument('--mode', choices=['les_to_saxs', 'saxs_to_les', 'les_to_les', 'saxs_to_saxs'], required=False, default=None,
