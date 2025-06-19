@@ -10,5 +10,5 @@
 #SBATCH --gres-flags=enforce-binding
 
 
-srun singularity exec /apps/containerCollections/CUDA12/pytorch2-NGC-24-02.sif /projects/pnria/caroline/AUTOFILL/env_autofill/bin/python script/03_train.py --mode pair_vae \
+srun singularity exec /apps/containerCollections/CUDA12/pytorch2-NGC-24-02.sif /projects/pnria/julien/env/autofill_env/bin/python script/03_train.py --mode pair_vae \
   --config config/pair_vae.yaml --gridsearch

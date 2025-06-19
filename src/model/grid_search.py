@@ -35,6 +35,8 @@ class GridSearch:
         for i, v in enumerate(itertools.product(*values)):
             print("-" * 60)
             print(f"[GridSearch] Run {i + 1}/{total_runs}")
+            import torch
+            print(f" GPU AVAILABLE: {torch.cuda.is_available()}")
             param_set = dict(zip(keys, v))
             print(f"[GridSearch] Parameters: {param_set}")
             config = copy.deepcopy(self.base_config)

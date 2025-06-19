@@ -1,7 +1,7 @@
 experiment_name: PAIR_VAE
 run_name: pairvae
 
-mlflow_uri: https://mlflowts.irit.fr/
+# mlflow_uri: https://mlflowts.irit.fr/
 dataset:
   conversion_dict: /projects/pnria/caroline/AUTOFILL/conversion_dict_all.json
   hdf5_file: /projects/pnria/caroline/AUTOFILL/pair_saxs_les_closest_of_concentration.h5
@@ -20,7 +20,7 @@ training:
   patience: 20
   use_loglog: True
 
-  batch_size: 32
+  batch_size: 8
   num_workers: 1
 
   lambda_param: 0.005
