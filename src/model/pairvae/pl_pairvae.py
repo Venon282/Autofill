@@ -149,3 +149,11 @@ class PlPairVAE(pl.LightningModule):
         recon_les2les = self.model.vae_les.decode(output_les["z"])
 
         return recon_les2les, data_q_les
+
+    def get_transforms_data_les(self):
+        config = self.model.get_les_config()
+        return config["transforms_data"]
+
+    def get_transforms_data_saxs(self):
+        config = self.model.get_saxs_config()
+        return config["transforms_data"]

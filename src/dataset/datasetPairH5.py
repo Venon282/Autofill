@@ -42,9 +42,9 @@ class PairHDF5Dataset(Dataset):
 
         assert len(self.data_q_saxs) == len(self.data_y_saxs), "data_y_saxs and data_q_saxs must have the same length"
         assert len(self.data_q_les) == len(self.data_y_les), "data_y_saxs and data_q_saxs must have the same length"
-        assert len(self.data_q_saxs) <= 0 or len(self.data_y_saxs) <= 0, "H5file saxs part is empty, please check your HDF5 file\n" \
+        assert len(self.data_q_saxs) > 0 or len(self.data_y_saxs) > 0, "H5file saxs part is empty, please check your HDF5 file\n" \
                                                                "Check your metadata filters and make sure they are not too restrictive."
-        assert len(self.data_q_les) <= 0 or len(self.data_y_les) <= 0, "H5file les part is empty, please check your HDF5 file\n" \
+        assert len(self.data_q_les) > 0 or len(self.data_y_les) > 0, "H5file les part is empty, please check your HDF5 file\n" \
                                                                "Check your metadata filters and make sure they are not too restrictive."
 
         self.transformer_q_saxs = _ensure_pipeline(transformer_q_saxs)

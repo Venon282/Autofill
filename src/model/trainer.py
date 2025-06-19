@@ -86,12 +86,13 @@ class TrainPipeline:
         callbacks = []
         if model_type.lower() == 'pair_vae':
             model = PlPairVAE(self.config)
-            transform_config = self.config.get('transforms_data', {})
+            transform_les = model.get_transforms_data_les()
+            transform_saxs = model.get_transforms_data_saxs()
             dataset = PairHDF5Dataset(**self.config['dataset'],
-                                      transformer_q_saxs=Pipeline(transform_config["q_saxs"]),
-                                      transformer_y_saxs=Pipeline(transform_config["y_saxs"]),
-                                      transformer_q_les=Pipeline(transform_config["q_les"]),
-                                      transformer_y_les=Pipeline(transform_config["y_les"]))
+                                      transformer_q_saxs=Pipeline(transform_saxs["q"]),
+                                      transformer_y_saxs=Pipeline(transform_saxs["y"]),
+                                      transformer_q_les=Pipeline(transform_les["q"]),
+                                      transformer_y_les=Pipeline(transform_les["y"]))
             curves_config = {
                 'saxs': {'truth_key': 'data_y_saxs', 'pred_keys': ['recon_saxs', 'recon_les2saxs'], 'use_loglog': True},
                 'les': {'truth_key': 'data_y_les', 'pred_keys': ['recon_les', 'recon_saxs2les']}

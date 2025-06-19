@@ -1,33 +1,15 @@
 experiment_name: PAIR_VAE
 run_name: pairvae
 dataset:
-  hdf5_file: "/mnt/data/WORK/Autofill/pair_saxs_les_closest_of_concentration.h5"
+  conversion_dict: /projects/pnria/caroline/AUTOFILL/conversion_dict_all.json
+  hdf5_file: /projects/pnria/caroline/AUTOFILL/pair_saxs_les_closest_of_concentration.h5
   metadata_filters:
-    material: [ "ag" ]
+    material:
+    - ag
+    shape:
+    - cylinder
   requested_metadata: [ "shape", "material" ]
-  conversion_dict: "/mnt/data/WORK/Autofill/conversion_dict_all.json"
   sample_frac: 1.0
-transforms_data:
-  y_saxs:
-    Padding:
-      pad_size: 54
-      value: 0
-    EnsurePositive: { }
-    Log: { }
-    MinMaxScaler: { }
-  y_les:
-    MinMaxScaler: { }
-    Padding:
-      pad_size: 500
-      value: 0
-  q_les:
-    Padding:
-      pad_size: 500
-      value: 0
-  q_saxs:
-    Padding:
-      pad_size: 500
-      value: 0
 
 training:
   num_gpus: 1
@@ -36,7 +18,7 @@ training:
   patience: 20
   use_loglog: True
 
-  batch_size: 16
+  batch_size: 8
   num_workers: 3
 
   lambda_param: 0.005
@@ -53,13 +35,18 @@ training:
 model:
   VAE_SAXS:
     vae_class: ResVAE
-    path_checkpoint: /mnt/data/WORK/Autofill/AUTOFILL_normalized/test_gpu_grid_0_beta=0.001_latent_dim=64_batch_size=16/best.ckpt
-    path_config: /mnt/data/WORK/Autofill/AUTOFILL_normalized/test_gpu_grid_0_beta=0.001_latent_dim=64_batch_size=16/config_model.yaml
+    path_checkpoint: /projects/pnria/julien/autofill/AUTOFILL_LES/les_cylinder_grid_1_latent_dim=64/best.ckpt
     args:
 
 
   VAE_LES:
     vae_class: ResVAE
-    path_checkpoint: /mnt/data/WORK/Autofill/AUTOFILL_normalized/test_gpu_grid_0_beta=0.001_latent_dim=64_batch_size=16/best.ckpt
-    path_config: /mnt/data/WORK/Autofill/AUTOFILL_normalized/test_gpu_grid_0_beta=0.001_latent_dim=64_batch_size=16/config_model.yaml
+    path_checkpoint: /projects/pnria/julien/autofill/AUTOFILL_SAXS/saxs_cylinder_grid_1_latent_dim=64_batch_size=8/best.ckpt
     args:
+
+param_grid:
+  training.weight_latent_similarity: [0.01, 0.005, 0.001]
+  training.weight_saxs2saxs: [0.1, 0.04, 0.01]
+  training.weight_les2les: [0.1, 0.04, 0.01]
+  training.weight_saxs2les: [1, 0.5, 1.5]
+  training.weight_les2saxs: [1, 0.5, 1.5]

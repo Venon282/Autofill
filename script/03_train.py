@@ -55,12 +55,12 @@ def main():
 
     if args.mode == "pair_vae" and args.technique is not None:
         raise ValueError("La technique ne peut pas être spécifiée pour le mode pair_vae")
-    if args.mode == "pair_vae":
-        dataset = config['dataset']
-        dataset["transform"].setdefault("y_saxs", transform_dict["saxs"]["Y"])
-        dataset["transform"].setdefault("y_les", transform_dict["les"]["Y"])
-        dataset["transform"].setdefault("q_saxs", transform_dict["saxs"]["Q"])
-        dataset["transform"].setdefault("q_les", transform_dict["les"]["Q"])
+    # if args.mode == "pair_vae":
+    #     dataset = config['dataset']
+    #     dataset["transform"].setdefault("y_saxs", transform_dict["saxs"]["Y"])
+    #     dataset["transform"].setdefault("y_les", transform_dict["les"]["Y"])
+    #     dataset["transform"].setdefault("q_saxs", transform_dict["saxs"]["Q"])
+    #     dataset["transform"].setdefault("q_les", transform_dict["les"]["Q"])
 
     config['model']['type'] = args.mode
     if args.hdf5_file is not None:

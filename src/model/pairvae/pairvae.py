@@ -15,16 +15,14 @@ class PairVAE(nn.Module):
 
         self.config = config
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print("========================================")
-        print("INIT VAE SAXS")
+        print("[PairVAE] Init saxs model")
 
         self.vae_saxs = PlVAE.load_from_checkpoint(self.config["VAE_SAXS"]["path_checkpoint"]).to(self.device)
-        print("========================================")
+        self._vae_saxs_config = self.vae_saxs.config
 
-        print("========================================")
-        print("INIT VAE LES")
+        print("[PairVAE] Init les model")
         self.vae_les = PlVAE.load_from_checkpoint(self.config["VAE_SAXS"]["path_checkpoint"]).to(self.device)
-        print("========================================")
+        self._vae_les_config = self.vae_les.config
 
     def forward(self, batch):
         """
@@ -46,8 +44,6 @@ class PairVAE(nn.Module):
         batch_saxs = {"data_y": y_saxs, "data_q": q_saxs, "metadata": metadata}
         output_saxs = self.vae_saxs(batch_saxs)
         recon_saxs = output_saxs["recon"]
-        mu_saxs = output_saxs["mu"]
-        logvar_saxs = output_saxs["logvar"]
         z_saxs = output_saxs["z"]
 
         # Domaine LES
@@ -56,8 +52,6 @@ class PairVAE(nn.Module):
         batch_les = {"data_y": y_les, "data_q": q_les, "metadata": metadata}
         output_les = self.vae_les(batch_les)
         recon_les = output_les["recon"]
-        mu_les = output_les["mu"]
-        logvar_les = output_les["logvar"]
         z_les = output_les["z"]
 
         # Reconstructions croisées
@@ -72,3 +66,9 @@ class PairVAE(nn.Module):
             "z_saxs": z_saxs,
             "z_les": z_les
         }
+
+    def get_les_config(self):
+        return self._vae_les_config
+
+    def get_saxs_config(self):
+        return self._vae_saxs_config

@@ -26,6 +26,12 @@ class PlVAE(pl.LightningModule):
         metadata = x["metadata"]
         return self.model(y=y, q=q, metadata=metadata)
 
+    def decode(self, *args, **kwargs):
+        return self.model.decode(*args, **kwargs)
+    
+    def encode(self, *args, **kwargs):
+        return self.model.encode(*args, **kwargs)
+
     def compute_loss(self, batch, output):
         x = batch["data_y"]
         recon = output['recon']
