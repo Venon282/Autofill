@@ -1,5 +1,7 @@
 experiment_name: PAIR_VAE
 run_name: pairvae
+
+mlflow_uri: https://mlflowts.irit.fr/
 dataset:
   conversion_dict: /projects/pnria/caroline/AUTOFILL/conversion_dict_all.json
   hdf5_file: /projects/pnria/caroline/AUTOFILL/pair_saxs_les_closest_of_concentration.h5
@@ -14,12 +16,12 @@ dataset:
 training:
   num_gpus: 1
   num_nodes: 1
-  num_epochs: 300
+  num_epochs: 200
   patience: 20
   use_loglog: True
 
-  batch_size: 8
-  num_workers: 3
+  batch_size: 32
+  num_workers: 1
 
   lambda_param: 0.005
   weight_latent_similarity: 0.005
@@ -33,20 +35,20 @@ training:
   eta_min: 0.000001
 
 model:
-  VAE_SAXS:
+  VAE_LES:
     vae_class: ResVAE
     path_checkpoint: /projects/pnria/julien/autofill/AUTOFILL_LES/les_cylinder_grid_1_latent_dim=64/best.ckpt
     args:
 
 
-  VAE_LES:
+  VAE_SAXS:
     vae_class: ResVAE
     path_checkpoint: /projects/pnria/julien/autofill/AUTOFILL_SAXS/saxs_cylinder_grid_1_latent_dim=64_batch_size=8/best.ckpt
     args:
 
 param_grid:
-  training.weight_latent_similarity: [0.01, 0.005, 0.001]
-  training.weight_saxs2saxs: [0.1, 0.04, 0.01]
-  training.weight_les2les: [0.1, 0.04, 0.01]
-  training.weight_saxs2les: [1, 0.5, 1.5]
-  training.weight_les2saxs: [1, 0.5, 1.5]
+  training.weight_latent_similarity: [0.005, 0.001]
+  training.weight_saxs2saxs: [ 0.04, 0.01]
+  training.weight_les2les: [0.04, 0.01]
+  training.weight_saxs2les: [0.5, 1.0]
+  training.weight_les2saxs: [0.5, 1.0]

@@ -21,7 +21,7 @@ class PairVAE(nn.Module):
         self._vae_saxs_config = self.vae_saxs.config
 
         print("[PairVAE] Init les model")
-        self.vae_les = PlVAE.load_from_checkpoint(self.config["VAE_SAXS"]["path_checkpoint"]).to(self.device)
+        self.vae_les = PlVAE.load_from_checkpoint(self.config["VAE_LES"]["path_checkpoint"]).to(self.device)
         self._vae_les_config = self.vae_les.config
 
     def forward(self, batch):
