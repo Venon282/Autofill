@@ -33,7 +33,7 @@ class InferencePlotCallback(pl.Callback):
     ) -> None:
         self.curves_config = curves_config
         self._check_config()
-        self.artifact_file = artifact_file
+        self.base_artifact_file = artifact_file
         self.output_dir = output_dir
         self.num_samples = num_samples
         self.every_n_epochs = every_n_epochs
@@ -97,12 +97,15 @@ class InferencePlotCallback(pl.Callback):
             ax.legend()
             ax.grid(True)
         plt.tight_layout()
+        if self.curves_config > 1:
+            artifact_file = name + '_' + self.base_artifact_file
+        else:
+             artifact_file = self.base_artifact_file
         if hasattr(trainer.logger, "experiment"):
-            trainer.logger.experiment.log_figure(trainer.logger.run_id, fig, artifact_file=self.artifact_file)
-
+            trainer.logger.experiment.log_figure(trainer.logger.run_id, fig, artifact_file=artifact_file)
         elif self.output_dir:
             os.makedirs(self.output_dir, exist_ok=True)
-            plot_path = os.path.join(self.output_dir, self.artifact_file)
+            plot_path = os.path.join(self.output_dir, artifact_file)
             plt.savefig(plot_path)
         else:
             print("Output directory not specified. Plot not saved.")

@@ -7,8 +7,9 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=1
-#SBATCH --gres-flags=enforce-binding
 
+#SBATCH --gres-flags=enforce-binding
+#SBATCH --gres=gpu:1
 
 srun singularity exec /apps/containerCollections/CUDA12/pytorch2-NGC-24-02.sif /projects/pnria/julien/env/autofill_env/bin/python script/03_train.py --mode pair_vae \
   --config config/pair_vae.yaml --gridsearch
