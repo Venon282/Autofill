@@ -27,6 +27,8 @@ class PlPairVAE(pl.LightningModule):
         self.weight_les2les = self.config["training"]["weight_les2les"]
         self.weight_les2saxs = self.config["training"]["weight_les2saxs"]
 
+        self.save_hyperparameters()
+
     def forward(self, batch):
         return self.model(batch)
 
@@ -111,44 +113,32 @@ class PlPairVAE(pl.LightningModule):
                     "interval": "epoch"}}
 
     def les_to_saxs(self, batch):
-
-        data_y_les = batch["data_y_les"]
-        data_q_les = batch["data_q_les"]
         
-        output_les = self.model.vae_les(y=data_y_les, q=data_q_les, metadata={})
+        output_les = self.model.vae_les(batch)
         recon_les2saxs = self.model.vae_saxs.decode(output_les["z"])
 
-        return recon_les2saxs, data_q_les
+        return recon_les2saxs, batch["data_q"]
 
     def saxs_to_les(self, batch):
-
-        data_y_saxs = batch["data_y_saxs"]
-        data_q_saxs = batch["data_q_saxs"]
         
-        output_saxs = self.model.vae_saxs(y=data_y_saxs, q=data_q_saxs, metadata={})
+        output_saxs = self.model.vae_saxs(batch)
         recon_saxs2les = self.model.vae_les.decode(output_saxs["z"])
 
-        return recon_saxs2les, data_q_saxs
+        return recon_saxs2les, batch["data_q"]
 
     def saxs_to_saxs(self, batch):
 
-        data_y_saxs = batch["data_y_saxs"]
-        data_q_saxs = batch["data_q_saxs"]
-        
-        output_saxs = self.model.vae_saxs(y=data_y_saxs, q=data_q_saxs, metadata={})
+        output_saxs = self.model.vae_saxs(batch)
         recon_saxs2saxs = self.model.vae_saxs.decode(output_saxs["z"])
 
-        return recon_saxs2saxs, data_q_saxs
+        return recon_saxs2saxs, batch["data_q"]
 
     def les_to_les(self, batch):
 
-        data_y_les = batch["data_y_les"]
-        data_q_les = batch["data_q_les"]
-        
-        output_les = self.model.vae_les(y=data_y_les, q=data_q_les, metadata={})
+        output_les = self.model.vae_les(batch)
         recon_les2les = self.model.vae_les.decode(output_les["z"])
 
-        return recon_les2les, data_q_les
+        return recon_les2les, batch["data_q"]
 
     def get_transforms_data_les(self):
         config = self.model.get_les_config()

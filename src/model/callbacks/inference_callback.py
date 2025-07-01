@@ -97,7 +97,7 @@ class InferencePlotCallback(pl.Callback):
             ax.legend()
             ax.grid(True)
         plt.tight_layout()
-        if self.curves_config > 1:
+        if len(self.curves_config) > 1:
             artifact_file = name + '_' + self.base_artifact_file
         else:
              artifact_file = self.base_artifact_file

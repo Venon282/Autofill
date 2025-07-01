@@ -287,8 +287,8 @@ sur `technique=saxs` et `material=ag`.
 
 Le script `05_infer.py` permet de lancer l'inférence avec les modèles VAE ou PairVAE directement en ligne de commande. 
 
-> **Note** : Lors de l'entrainnement, le modèle est sauvegarde le convertion_dict avec le quel il a été entrainé.
-> Lors de l'inference, si vous utilisez un dataset H5, il faut que le convertion_dict soit le même que celui utilisé. Vous pouvez les trouver dans la configuration sauvegarder lors de l'entrainnement.
+> **Note** : Lors de l'entrainnement, le modèle est sauvegarde le conversion_dict avec le quel il a été entrainé.
+> Lors de l'inference, si vous utilisez un dataset H5, il faut que le conversion_dict soit le même que celui utilisé. Vous pouvez les trouver dans la configuration sauvegarder lors de l'entrainnement.
 
 **Utilisation générale** :
 ```bash

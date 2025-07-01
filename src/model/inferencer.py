@@ -1,6 +1,7 @@
 import abc
 import os
 import yaml
+import json
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -27,22 +28,34 @@ def move_to_device(batch, device):
 
 
 class BaseInferencer:
-    def __init__(self, output_dir, save_plot, checkpoint_path, data_path, sample_frac, hparams, batch_size=32, data_dir="."):
+    def __init__(self, output_dir, save_plot, checkpoint_path, hparams, data_path, conversion_dict_path=None, sample_frac=1.0, batch_size=32, data_dir="."):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.batch_size = batch_size
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
+
+        self.config = hparams
+
         self.model = self.load_model(checkpoint_path)
         self.model.to(self.device).eval()
-        self.config = hparams
-        self.convertion_dict = self.config["convertion_dict"]
+
+        if conversion_dict_path is None :
+            self.conversion_dict = self.config["conversion_dict"]
+        else :
+            with open(conversion_dict_path, 'r') as file:
+                self.conversion_dict = json.load(file)
+
         self.data_path = data_path
         self.data_dir = data_dir
         self.sample_frac = sample_frac
-        input_dim = self.config["model"]["args"]["input_dim"]
+        input_dim = self.get_input_dim()
         self.compute_dataset(input_dim)
         self.save_plot = save_plot
         self.use_loglog = self.config["training"]["use_loglog"]
+
+    @abc.abstractmethod
+    def get_input_dim(self):
+        raise NotImplementedError("get_input_dim method should be implemented in subclasses")
 
     @abc.abstractmethod
     def compute_dataset(self, input_dim):
@@ -61,9 +74,9 @@ class BaseInferencer:
         # Metadata
         converted_metadata = {}
         for k, v in metadata.items():
-            v = v.cpu().numpy().item()
-            if self.convertion_dict is not None and k in self.convertion_dict:
-                inv_conv = self.convertion_dict[k]
+            v = v.detach().cpu().numpy().item()
+            if self.conversion_dict is not None and k in self.conversion_dict:
+                inv_conv = self.conversion_dict[k]
                 inv_conv = {v_: k_ for k_, v_ in inv_conv.items()}
                 v = inv_conv.get(v, v)                
             converted_metadata[k] = v
@@ -113,6 +126,9 @@ class BaseInferencer:
 class VAEInferencer(BaseInferencer):
     def load_model(self, path):
         return PlVAE.load_from_checkpoint(checkpoint_path=path)
+    
+    def get_input_dim(self):
+        return self.config["model"]["args"]["input_dim"]
 
     def infer_and_save(self):
         loader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
@@ -126,8 +142,8 @@ class VAEInferencer(BaseInferencer):
 
                 metadata_batch = batch["metadata"]
                 for i in range(len(y_pred)):
-                    y_arr = y_pred[i].cpu().numpy().flatten()
-                    q_arr = q_pred[i].cpu().numpy().flatten()
+                    y_arr = y_pred[i].detach().cpu().numpy().flatten()
+                    q_arr = q_pred[i].detach().cpu().numpy().flatten()
                     metadata = {k : metadata_batch[k][i] for k in list(metadata_batch.keys())}
                     y_arrs = {"".join(self.config["dataset"]["metadata_filters"].get("technique", "signal")) : y_arr}
                     self.save_pred(batch, i, q_arr, y_arrs, metadata)
@@ -141,11 +157,12 @@ class VAEInferencer(BaseInferencer):
                 transformer_q=self.config["transforms_data"]["q"],
                 transformer_y=self.config["transforms_data"]["y"],
                 metadata_filters=self.config["dataset"]["metadata_filters"],
-                conversion_dict=self.config["convertion_dict"],
+                conversion_dict=self.conversion_dict,
                 requested_metadata=['shape','material','concentration','dimension1','dimension2','opticalPathLength', 'd','h']
             )
             self.format = 'h5'
             self.invert = self.dataset.invert_transforms_func()
+        
         elif self.data_path.endswith(".csv"):
             import pandas as pd
             df = pd.read_csv(self.data_path)
@@ -160,19 +177,23 @@ class VAEInferencer(BaseInferencer):
             )
             self.format = 'csv'
             self.invert = self.dataset.invert_transforms_func()
+        
         else:
             raise ValueError("Unsupported file format. Use .h5 or .csv")
 
 
 class PairVAEInferencer(BaseInferencer):
-    def __init__(self, checkpoint_path, data_path, mode, conversion_dict_path=None, batch_size=32):
+    def __init__(self, mode, output_dir, save_plot, checkpoint_path, hparams, data_path, conversion_dict_path=None, sample_frac=1.0, batch_size=32, data_dir="."):
         if mode not in {'les_to_saxs', 'saxs_to_les', 'les_to_les', 'saxs_to_saxs'}:
             raise ValueError(f"Invalid mode '{mode}'. Expected 'les_to_saxs' or 'saxs_to_les' or 'les_to_les' or 'saxs_to_saxs'.")
         self.mode = mode
-        super().__init__(checkpoint_path, data_path, conversion_dict_path, batch_size)
+        super().__init__(output_dir, save_plot, checkpoint_path, hparams, data_path, conversion_dict_path, sample_frac, batch_size, data_dir)
 
     def load_model(self, path):
-        return PlPairVAE.load_from_checkpoint(path)
+        return PlPairVAE.load_from_checkpoint(checkpoint_path=path)
+
+    def get_input_dim(self):
+        return None
 
     def infer_and_save(self):
         loader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
@@ -194,8 +215,8 @@ class PairVAEInferencer(BaseInferencer):
             metadata_batch = batch["metadata"]
             for i in range(len(y_pred)):
                 metadata = {k : metadata_batch[k][i] for k in list(metadata_batch.keys())}
-                y_arr = y_pred[i].cpu().numpy().flatten()
-                q_arr = q_pred[i].cpu().numpy().flatten()
+                y_arr = y_pred[i].detach().cpu().numpy().flatten()
+                q_arr = q_pred[i].detach().cpu().numpy().flatten()
                 y_arrs = {self.mode : y_arr}
                 self.save_pred(batch, i, q_arr, y_arrs, metadata)
 
@@ -208,12 +229,12 @@ class PairVAEInferencer(BaseInferencer):
             transformer_y_saxs = Pipeline(transform_config["y_saxs"])
 
             if self.mode == 'les_to_saxs':
-                self.config["dataset"]["metadata_filters"]["technique"] = "les"
+                self.config["dataset"]["metadata_filters"]["technique"] = ["les"]
                 self.dataset = HDF5Dataset(
                     self.data_path,
                     sample_frac=self.sample_frac,
                     metadata_filters=self.config["dataset"]["metadata_filters"],
-                    conversion_dict=self.config['config']["conversion_dict"],
+                    conversion_dict=self.conversion_dict,
                     transformer_q=transformer_q_les,
                     transformer_y=transformer_y_les,
                     requested_metadata=['shape','material','concentration','dimension1','dimension2','opticalPathLength', 'd','h']
@@ -230,7 +251,7 @@ class PairVAEInferencer(BaseInferencer):
                     self.data_path,
                     sample_frac=self.sample_frac,
                     metadata_filters=self.config["dataset"]["metadata_filters"],
-                    conversion_dict=self.config['config']["conversion_dict"],
+                    conversion_dict=self.conversion_dict,
                     transformer_q=transformer_q_saxs,
                     transformer_y=transformer_y_saxs,
                     requested_metadata=['shape','material','concentration','dimension1','dimension2','opticalPathLength', 'd','h']
@@ -247,7 +268,7 @@ class PairVAEInferencer(BaseInferencer):
                     self.data_path,
                     sample_frac=self.sample_frac,
                     metadata_filters=self.config["dataset"]["metadata_filters"],
-                    conversion_dict=self.config['config']["conversion_dict"],
+                    conversion_dict=self.conversion_dict,
                     transformer_q=transformer_q_les,
                     transformer_y=transformer_y_les,
                     requested_metadata=['shape','material','concentration','dimension1','dimension2','opticalPathLength', 'd','h']
@@ -264,7 +285,7 @@ class PairVAEInferencer(BaseInferencer):
                     self.data_path,
                     sample_frac=self.sample_frac,
                     metadata_filters=self.config["dataset"]["metadata_filters"],
-                    conversion_dict=self.config['config']["conversion_dict"],
+                    conversion_dict=self.conversion_dict,
                     transformer_q=transformer_q_saxs,
                     transformer_y=transformer_y_saxs,
                     requested_metadata=['shape','material','concentration','dimension1','dimension2','opticalPathLength', 'd','h']
@@ -279,9 +300,9 @@ class PairVAEInferencer(BaseInferencer):
                 raise ValueError(f"Unknown mode: {self.mode}")
 
             self.format = 'h5'
-            self.invert = self.dataset.inverts_func()
+            self.invert = self.dataset.invert_transforms_func()
 
-        if self.data_path.endswith(".csv"):
+        elif self.data_path.endswith(".csv"):
             transform_config = self.config.get('transforms_data', {})
             transformer_q_les = Pipeline(transform_config["q_les"])
             transformer_y_les = Pipeline(transform_config["y_les"])
@@ -344,7 +365,7 @@ class PairVAEInferencer(BaseInferencer):
                 raise ValueError(f"Unknown mode: {self.mode}")
 
             self.format = 'h5'
-            self.invert = self.dataset.inverts_func()
+            self.invert = self.dataset.invert_transforms_func()
         
         else:
             raise ValueError("Unsupported file format. Use .h5")

@@ -29,7 +29,7 @@ class TrainPipeline:
         self.log_path = self._safe_log_directory()
         self.config['training']['output_dir'] = str(self.log_path)
         self.model, self.dataset, self.extra_callback_list = self._initialize_components()
-        self.config['convertion_dict'] = self.dataset.get_conversion_dict()
+        self.config['conversion_dict'] = self.dataset.get_conversion_dict()
         if self.verbose:
             print("[Pipeline] Preparing data loaders")
         self.training_loader, self.validation_loader = self._create_data_loaders()
