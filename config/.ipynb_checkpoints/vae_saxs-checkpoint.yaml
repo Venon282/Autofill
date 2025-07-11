@@ -1,16 +1,16 @@
-experiment_name: "AUTOFILL_LES_1000_2_gridsearch"
-run_name: les_cylinder
+experiment_name: "AUTOFILL_saxs_1000_gridsearch"
+run_name: saxs_cylinder
 mlflow_uri: https://mlflowts.irit.fr/
 dataset:
-  conversion_dict: /projects/pnria/caroline/AUTOFILL/new_data/LES/conv_les.json
-  hdf5_file: /projects/pnria/caroline/AUTOFILL/new_data/LES/data_les.h5
+  conversion_dict: /projects/pnria/caroline/AUTOFILL/new_data/SAXS/conv_saxs.json
+  hdf5_file: /projects/pnria/caroline/AUTOFILL/new_data/SAXS/data_saxs.h5
   metadata_filters:
     material:
     - Ag
     shape:
     - Cylindre
     technique:
-    - LES
+    - SAXS
     type:
     - simulation
   requested_metadata:
@@ -19,7 +19,7 @@ dataset:
   sample_frac: 1.0
 transforms_data:
   y:
-    PreprocessingLES:
+    PreprocessingSAXS:
       pad_size: 1000
   q:
     PreprocessingQ:
@@ -27,7 +27,7 @@ transforms_data:
 
 training:
   T_max: 100
-  batch_size: 8
+  batch_size: 16
   beta: 1.0e-05
   eta_min: 1.0e-08
   max_lr: 1.0e-04
@@ -36,7 +36,7 @@ training:
   num_nodes: 1
   num_workers: 1
   patience: 40
-  use_loglog: false
+  use_loglog: true
   min_delta: 0.00001
 
 model:
@@ -53,4 +53,4 @@ model:
 
 param_grid:
   model.args.latent_dim: [ 128, 64 ]    
-  training.beta: [ 1.0e-03, 1.0e-04, 1.0e-05 ]    
+  training.beta: [ 1.0e-03, 1.0e-04, 1.0e-05, 1.0e-06 ]    

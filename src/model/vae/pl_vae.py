@@ -1,7 +1,7 @@
 import lightning.pytorch as pl
 import torch
 import torch.nn.functional as F
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from src.model.vae.submodel.registry import *
 
@@ -72,14 +72,18 @@ class PlVAE(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.config["training"]["max_lr"])
 
-        scheduler = CosineAnnealingLR(
+        scheduler = ReduceLROnPlateau(
             optimizer,
-            T_max=self.config["training"]["T_max"],
-            eta_min=self.config["training"]["eta_min"])
+            mode="min",
+            threshold=1e-3,
+            factor=0.1,
+            patience=5,
+            min_lr=1e-10)
 
         return {"optimizer": optimizer,
                 "lr_scheduler": {
                     "scheduler": scheduler,
+                    "monitor": "val_loss",
                     "interval": "epoch"}}
 
     # def on_save_checkpoint(self, checkpoint):
