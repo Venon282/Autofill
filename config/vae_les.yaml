@@ -3,16 +3,8 @@ run_name: les_cylinder
 mlflow_uri: https://mlflowts.irit.fr/
 dataset:
   conversion_dict: /projects/pnria/caroline/AUTOFILL/new_data/LES/conv_les.json
-  hdf5_file: /projects/pnria/caroline/AUTOFILL/new_data/LES/data_les.h5
+  hdf5_file: /projects/pnria/caroline/AUTOFILL/saxs_library.h5
   metadata_filters:
-    material:
-    - Ag
-    shape:
-    - Cylindre
-    technique:
-    - LES
-    type:
-    - simulation
   requested_metadata:
   - shape
   - material

@@ -12,7 +12,7 @@ from src.dataset.transformations import *
 
 
 class HDF5Dataset(Dataset):
-    def __init__(self, hdf5_file, conversion_dict: Union[dict, str, Path], metadata_filters=None,
+    def __init__(self, hdf5_file, conversion_dict: Union[dict, str, Path]=None, metadata_filters=None,
                  sample_frac=1, requested_metadata=[],
                  transformer_q=Pipeline(), transformer_y=Pipeline()):
         self.hdf5_file = hdf5_file
@@ -40,14 +40,22 @@ class HDF5Dataset(Dataset):
                              ['data_q', 'data_y', 'len', 'csv_index']]
         self.metadata_datasets = {col: self.hdf[col] for col in all_metadata_cols}
         self.requested_metadata = self._validate_requested_metadata(requested_metadata, all_metadata_cols)
-        self.conversion_dict = self._load_conversion_dict(conversion_dict)
-        self.metadata_filters = metadata_filters or {}
-        self.filtered_indices = self._apply_metadata_filters()
+
+        if conversion_dict is not None :
+            self.conversion_dict = self._load_conversion_dict(conversion_dict)
+            self.metadata_filters = metadata_filters or {}
+            self.filtered_indices = self._apply_metadata_filters()
+
+        else :
+            self.filtered_indices = list(range(len(self.data_q)))
+
         self._validate_frac(sample_frac)
         self.sample_frac = sample_frac
         if 0 < sample_frac < 1:
             self._apply_data_fraction(sample_frac)
+
         self._print_init_info()
+        
         self.transformer_y.fit(self.data_y[self.filtered_indices])
         self.transformer_q.fit(self.data_q[self.filtered_indices])
 
