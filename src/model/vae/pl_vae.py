@@ -38,7 +38,13 @@ class PlVAE(pl.LightningModule):
         mu = output['mu']
         logvar = output['logvar']
 
-        recon_loss = F.mse_loss(recon, x, reduction='mean')
+        if self.config["training"]["weighted_loss"] :
+            weights = torch.ones_like(x)         # (batch_size, 1000)
+            weights[:, :self.config["training"]["weighted_loss_limit_index"]] = 10.0
+            recon_loss = (weights * (recon - x) ** 2).sum() / weights.sum()
+        else :
+            recon_loss = F.mse_loss(recon, x, reduction='mean')
+        
         # kl_div = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp()) / x.size(0)
         kl_div = -0.5 * torch.mean(torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1))
         return recon_loss + self.beta * kl_div, recon_loss, kl_div

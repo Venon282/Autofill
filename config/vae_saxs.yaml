@@ -1,21 +1,13 @@
-experiment_name: "AUTOFILL_saxs_1000_2_gridsearch"
-run_name: saxs_cylinder
-mlflow_uri: https://mlflowts.irit.fr/
+experiment_name: "AUTOFILL_saxs_1000"
+run_name: saxs_cylinder_ag
+mlflow_uri: 
 dataset:
-  conversion_dict: /projects/pnria/caroline/AUTOFILL/new_data/SAXS/conv_saxs.json
-  hdf5_file: /projects/pnria/caroline/AUTOFILL/new_data/SAXS/data_saxs.h5
+  conversion_dict:
+  hdf5_file: /projects/pnria/caroline/AUTOFILL/data_sept_25/cylinder_saxs_library_no_noise_meta.h5
+  array_train_indices:
+  array_val_indices: 
   metadata_filters:
-    material:
-    - Ag
-    shape:
-    - Cylindre
-    technique:
-    - SAXS
-    type:
-    - simulation
   requested_metadata:
-  - shape
-  - material
   sample_frac: 1.0
 transforms_data:
   y:
@@ -26,6 +18,8 @@ transforms_data:
       pad_size: 1000
 
 training:
+  weighted_loss : True
+  weighted_loss_limit_index: 300
   T_max: 100
   batch_size: 8
   beta: 1.0e-05

@@ -1,13 +1,13 @@
-experiment_name: "AUTOFILL_LES_1000_2_gridsearch"
-run_name: les_cylinder
+experiment_name: "AUTOFILL_LES_1000"
+run_name: les_cylinder_ag
 mlflow_uri: https://mlflowts.irit.fr/
 dataset:
-  conversion_dict: /projects/pnria/caroline/AUTOFILL/new_data/LES/conv_les.json
-  hdf5_file: /projects/pnria/caroline/AUTOFILL/saxs_library.h5
+  conversion_dict:
+  hdf5_file: /projects/pnria/caroline/AUTOFILL/data_sept_25/AUTOFILL_code_LES_cylindre_Ag/cylinder_les_meta.h5
+  array_train_indices:
+  array_val_indices: 
   metadata_filters:
   requested_metadata:
-  - shape
-  - material
   sample_frac: 1.0
 transforms_data:
   y:
@@ -18,6 +18,8 @@ transforms_data:
       pad_size: 1000
 
 training:
+  weighted_loss : False
+  weighted_loss_limit_index: 
   T_max: 100
   batch_size: 8
   beta: 1.0e-05

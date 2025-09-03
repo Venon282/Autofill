@@ -10,6 +10,7 @@ from torch.utils.data import random_split, DataLoader
 from uniqpath import unique_path
 
 from src.dataset.datasetH5 import HDF5Dataset
+from src.dataset.utils import *
 from src.dataset.datasetPairH5 import PairHDF5Dataset
 from src.dataset.transformations import Pipeline
 from src.model.callbacks.inference_callback import InferencePlotCallback
@@ -128,7 +129,14 @@ class TrainPipeline:
 
         return model, dataset, callbacks
 
-    def _create_data_loaders(self):
+    def _create_data_loaders_old(self):
+        """
+        TODO
+        fonction de séparation selon les critères d'apparaillage, 
+        par exemple si critèrev de pair saxs/les est selon concentration/materiel/forme
+        on forme tous les trios possible, 80% vont en train, 20% en val
+        IL FAUT ENREGISTRERle split pendant les vae simples pour l'utiliser dans le pair
+        """
         dataset_instance = self.dataset
         total_samples = len(dataset_instance)
         train_count = int(0.8 * total_samples)
@@ -141,6 +149,44 @@ class TrainPipeline:
         if self.verbose:
             print(f"[Data] Creating DataLoaders with batch_size={batch_size}, num_workers={num_workers}")
         training_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+        validation_loader = DataLoader(validation_subset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+        return training_loader, validation_loader
+
+    def _create_data_loaders(self):
+        """
+        TODO
+        fonction de séparation selon les critères d'apparaillage, 
+        par exemple si critèrev de pair saxs/les est selon concentration/materiel/forme
+        on forme tous les trios possible, 80% vont en train, 20% en val
+        IL FAUT ENREGISTRERle split pendant les vae simples pour l'utiliser dans le pair
+        """
+
+        train_csv_indices_saxs_les = np.load(self.config['dataset']['array_train_indices'], allow_pickle=True)
+        val_csv_indices_saxs_les = np.load(self.config['dataset']['array_val_indices'], allow_pickle=True)
+
+        # si mode vae
+        if self.config['model']['type'].lower() == 'vae':
+            # select colonne 1 for saxs, colonne 2 for les
+            if  "saxs" in self.config['experiment_name']: 
+                train_csv_indices = [pair[1] for pair in train_csv_indices_saxs_les]
+                val_csv_indices = [pair[1] for pair in val_csv_indices_saxs_les]
+            elif "les" in self.config['experiment_name'] :
+                train_csv_indices = [pair[2] for pair in train_csv_indices_saxs_les]
+                val_csv_indices = [pair[2] for pair in val_csv_indices_saxs_les]
+        
+        # si mode pair   
+        elif self.config['model']['type'].lower() == 'pair_vae':
+            train_csv_indices = [pair[0] for pair in train_csv_indices_saxs_les]
+            val_csv_indices = [pair[0] for pair in val_csv_indices_saxs_les]
+
+        train_dataset = build_subset(self.dataset, train_csv_indices)
+        validation_subset   = build_subset(self.dataset, val_csv_indices)
+
+        batch_size = self.config['training']['batch_size']
+        num_workers = self.config['training']['num_workers']
+        if self.verbose:
+            print(f"[Data] Creating DataLoaders with batch_size={batch_size}, num_workers={num_workers}")
+        training_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
         validation_loader = DataLoader(validation_subset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
         return training_loader, validation_loader
 

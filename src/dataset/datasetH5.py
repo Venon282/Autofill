@@ -2,6 +2,7 @@ import json
 import os
 import warnings
 from pathlib import Path
+import numpy as np
 
 import h5py
 import torch
@@ -10,6 +11,7 @@ from tqdm import tqdm
 
 from src.dataset.transformations import *
 
+DEFAULT_LENGTH_DATA = 1000
 
 class HDF5Dataset(Dataset):
     def __init__(self, hdf5_file, conversion_dict: Union[dict, str, Path]=None, metadata_filters=None,
@@ -17,25 +19,29 @@ class HDF5Dataset(Dataset):
                  transformer_q=Pipeline(), transformer_y=Pipeline()):
         self.hdf5_file = hdf5_file
         self.hdf = h5py.File(hdf5_file, 'r', swmr=True)
-        self.data_q = self.hdf['data_q']
+
+        if "data_q" in self.hdf:
+            self.data_q = self.hdf["data_q"]
+        else:
+            self.data_q = self.hdf["data_wavelength"]    
+
+        #indices = np.where(self.data_q[0] > 0.3)[0]
+        #print(indices)
+
         self.data_y = self.hdf['data_y']
         assert len(self.data_q) == len(self.data_y), "data_q and data_y must have the same length"
         assert len(self.data_y) > 0 or len(self.data_q) >0, "H5file is empty, please check your HDF5 file\n" \
         "Check your metadata filters and make sure they are not too restrictive."
-        required_keys = ['data_q', 'data_y']
-        missing = [k for k in required_keys if k not in self.hdf]
-        if missing:
-            raise RuntimeError(
-                f"Missing required datasets in HDF5 file: {missing}\n"
-                "Your HDF5 file is not compatible with VAE. "
-                "Refer to the README (section 2) and generate it using scripts/02_txtTOhdf5.py."
-            )
 
         self.transformer_q = _ensure_pipeline(transformer_q)
         self.transformer_y = _ensure_pipeline(transformer_y)
 
         self.csv_index = self.hdf['csv_index']
-        self.len = self.hdf['len']
+        if "len" in self.hdf.keys():
+            self.len = self.hdf["len"][()]  # lire la valeur du dataset
+        else:
+            self.len = arr = np.full(len(self.hdf['data_y']), DEFAULT_LENGTH_DATA)
+
         all_metadata_cols = [col for col in self.hdf.keys() if col not in
                              ['data_q', 'data_y', 'len', 'csv_index']]
         self.metadata_datasets = {col: self.hdf[col] for col in all_metadata_cols}
@@ -47,6 +53,7 @@ class HDF5Dataset(Dataset):
             self.filtered_indices = self._apply_metadata_filters()
 
         else :
+            self.conversion_dict = None
             self.filtered_indices = list(range(len(self.data_q)))
 
         self._validate_frac(sample_frac)
