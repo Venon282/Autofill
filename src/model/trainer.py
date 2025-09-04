@@ -161,16 +161,16 @@ class TrainPipeline:
         IL FAUT ENREGISTRERle split pendant les vae simples pour l'utiliser dans le pair
         """
 
-        train_csv_indices_saxs_les = np.load(self.config['dataset']['array_train_indices'], allow_pickle=True)
-        val_csv_indices_saxs_les = np.load(self.config['dataset']['array_val_indices'], allow_pickle=True)
+        train_csv_indices_saxs_les = np.load(self.config['training']['array_train_indices'], allow_pickle=True)
+        val_csv_indices_saxs_les = np.load(self.config['training']['array_val_indices'], allow_pickle=True)
 
         # si mode vae
         if self.config['model']['type'].lower() == 'vae':
             # select colonne 1 for saxs, colonne 2 for les
-            if  "saxs" in self.config['experiment_name']: 
+            if  "saxs" in self.config['run_name']: 
                 train_csv_indices = [pair[1] for pair in train_csv_indices_saxs_les]
                 val_csv_indices = [pair[1] for pair in val_csv_indices_saxs_les]
-            elif "les" in self.config['experiment_name'] :
+            elif "les" in self.config['run_name'] :
                 train_csv_indices = [pair[2] for pair in train_csv_indices_saxs_les]
                 val_csv_indices = [pair[2] for pair in val_csv_indices_saxs_les]
         

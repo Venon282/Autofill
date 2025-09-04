@@ -4,8 +4,6 @@ mlflow_uri: https://mlflowts.irit.fr/
 dataset:
   conversion_dict:
   hdf5_file: /projects/pnria/caroline/AUTOFILL/data_sept_25/AUTOFILL_code_LES_cylindre_Ag/cylinder_les_meta.h5
-  array_train_indices:
-  array_val_indices: 
   metadata_filters:
   requested_metadata:
   sample_frac: 1.0
@@ -18,12 +16,14 @@ transforms_data:
       pad_size: 1000
 
 training:
+  array_train_indices: /projects/pnria/caroline/AUTOFILL/data_sept_25/train_(pair_saxs_les).npy
+  array_val_indices: /projects/pnria/caroline/AUTOFILL/data_sept_25/val_(pair_saxs_les).npy
   weighted_loss : False
   weighted_loss_limit_index: 
   T_max: 100
   batch_size: 8
   beta: 1.0e-05
-  eta_min: 1.0e-08
+  eta_min: 1.0e-10
   max_lr: 1.0e-04
   num_epochs: 300
   num_gpus: 1
