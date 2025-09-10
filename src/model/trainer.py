@@ -73,8 +73,14 @@ class TrainPipeline:
         return config
 
     def _safe_log_directory(self) -> Path:
-        log_path = unique_path(Path(self.config['experiment_name'], self.config['run_name']))
-        log_path.mkdir(parents=True)
+        if 'output_dir' not in self.config['training']:
+            log_path = unique_path(Path(self.config['experiment_name'], self.config['run_name']))
+            log_path.mkdir(parents=True)
+        else:
+            base_path = Path(self.config['training']['output_dir'])
+            base_path.mkdir(parents=True, exist_ok=True)
+            log_path = unique_path(base_path / self.config['run_name'])
+            log_path.mkdir(parents=True)
         return log_path
 
     def _initialize_components(self):
@@ -89,6 +95,8 @@ class TrainPipeline:
             model = PlPairVAE(self.config)
             transform_les = model.get_transforms_data_les()
             transform_saxs = model.get_transforms_data_saxs()
+            print(f"config : {self.config}")
+            print("#" * 50)
             dataset = PairHDF5Dataset(**self.config['dataset'],
                                       transformer_q_saxs=Pipeline(transform_saxs["q"]),
                                       transformer_y_saxs=Pipeline(transform_saxs["y"]),
@@ -164,7 +172,6 @@ class TrainPipeline:
         train_csv_indices_saxs_les = np.load(self.config['training']['array_train_indices'], allow_pickle=True)
         val_csv_indices_saxs_les = np.load(self.config['training']['array_val_indices'], allow_pickle=True)
 
-        # si mode vae
         if self.config['model']['type'].lower() == 'vae':
             # select colonne 1 for saxs, colonne 2 for les
             if  "saxs" in self.config['run_name']: 
@@ -174,7 +181,6 @@ class TrainPipeline:
                 train_csv_indices = [pair[2] for pair in train_csv_indices_saxs_les]
                 val_csv_indices = [pair[2] for pair in val_csv_indices_saxs_les]
         
-        # si mode pair   
         elif self.config['model']['type'].lower() == 'pair_vae':
             train_csv_indices = [pair[0] for pair in train_csv_indices_saxs_les]
             val_csv_indices = [pair[0] for pair in val_csv_indices_saxs_les]

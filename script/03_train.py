@@ -18,7 +18,7 @@ transform_dict = {"les": {"Y": {"PreprocessingLES": {"pad_size": 500}}, "Q": {"P
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Entraînement d'un model")
-    parser.add_argument("--mode", type=str, default="vae", choices=["vae", "pair_vae"])
+    parser.add_argument("--mode", type=str, choices=["vae", "pair_vae"])
     parser.add_argument("--gridsearch", action='store_true', default=False)
     parser.add_argument("--config", type=str, default="model/VAE/vae_config_saxs.yaml", )
     parser.add_argument("--name", type=str, default=None, )

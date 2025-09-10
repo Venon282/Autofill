@@ -1,24 +1,21 @@
-experiment_name: PAIR_VAE
-run_name: pairvae
+experiment_name: PAIR_VAe
+run_name: pairvae_loss_spe
 
 mlflow_uri: https://mlflowts.irit.fr/
 dataset:
-  conversion_dict: /projects/pnria/caroline/AUTOFILL/conversion_dict_all.json
-  hdf5_file: /projects/pnria/caroline/AUTOFILL/pair_saxs_les_closest_of_concentration.h5
+  conversion_dict: 
+  hdf5_file: "/projects/pnria/caroline/AUTOFILL/data_sept_25/pair_data.h5"
   metadata_filters:
-    material:
-    - ag
-    shape:
-    - cylinder
-  requested_metadata: [ "shape", "material" ]
+  requested_metadata: 
   sample_frac: 1.0
 
 training:
+  output_dir: "/projects/pnria/julien/autofill/runs/"
   num_gpus: 1
   num_nodes: 1
-  num_epochs: 200
+  num_epochs: 250
   patience: 20
-  use_loglog: True
+  use_loglog: false
 
   batch_size: 8
   num_workers: 1
@@ -30,20 +27,23 @@ training:
   weight_les2les: 0.5
   weight_les2saxs: 1
 
-  max_lr: 0.0001
-  T_max: 50
-  eta_min: 0.000001
+  max_lr: 1.0e-05
+
+  T_max: 75
+  eta_min: 1.0e-10
+  array_train_indices: /projects/pnria/caroline/AUTOFILL/data_sept_25/train_(pair_saxs_les).npy
+  array_val_indices: /projects/pnria/caroline/AUTOFILL/data_sept_25/val_(pair_saxs_les).npy
 
 model:
   VAE_LES:
-    vae_class: ResVAE
-    path_checkpoint: /projects/pnria/julien/autofill/AUTOFILL_LES/les_cylinder_grid_1_latent_dim=64/best.ckpt
+    vae_class: ResVAEBN 
+    path_checkpoint: /projects/pnria/caroline/AUTOFILL/results_sept_25/les_cylinder_ag_1/best.ckpt
     args:
 
 
   VAE_SAXS:
-    vae_class: ResVAE
-    path_checkpoint: /projects/pnria/julien/autofill/AUTOFILL_SAXS/saxs_cylinder_grid_1_latent_dim=64_batch_size=8/best.ckpt
+    vae_class: ResVAEBN 
+    path_checkpoint: /projects/pnria/caroline/AUTOFILL/results_sept_25/AUTOFILL_saxs_1000_loss_special/saxs_cylinder_ag_loss_special/best.ckpt
     args:
 
 param_grid:

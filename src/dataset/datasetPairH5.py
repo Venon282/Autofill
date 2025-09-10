@@ -57,7 +57,13 @@ class PairHDF5Dataset(Dataset):
         self.metadata_datasets = {col: self.hdf[col] for col in all_metadata_cols}
 
         self.requested_metadata = self._validate_requested_metadata(requested_metadata, all_metadata_cols)
-        self.conversion_dict = self._load_conversion_dict(conversion_dict)
+        if conversion_dict is not None :
+            self.conversion_dict = self._load_conversion_dict(conversion_dict)
+            self.metadata_filters = metadata_filters or {}
+            self.filtered_indices = self._apply_metadata_filters()
+        else :
+            self.conversion_dict = None
+            self.filtered_indices = list(range(len(self.data_q_les)))
 
         # Filters
         self.metadata_filters = metadata_filters or {}
@@ -107,6 +113,7 @@ class PairHDF5Dataset(Dataset):
 
     def _load_conversion_dict(self, conversion_dict: Union[dict, str, Path]):
         """Load JSON conversion dictionary for categorical metadata"""
+        assert conversion_dict is not None, "A conversion dictionary must be provided"
         if isinstance(conversion_dict, (str, Path)):
             with open(conversion_dict, 'r') as f:
                 conversion_dict = json.load(f)
