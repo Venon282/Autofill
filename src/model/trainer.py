@@ -7,7 +7,19 @@ import yaml
 from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping
 from lightning.pytorch.loggers import MLFlowLogger
 from torch.utils.data import random_split, DataLoader
-from uniqpath import unique_path
+try:
+    from uniqpath import unique_path
+except Exception:
+    def unique_path(path: Path) -> Path:
+        p = Path(path)
+        if not p.exists():
+            return p
+        i = 1
+        while True:
+            candidate = p.parent / f"{p.name}_{i}"
+            if not candidate.exists():
+                return candidate
+            i += 1
 
 from src.dataset.datasetH5 import HDF5Dataset
 from src.dataset.utils import *
@@ -110,12 +122,25 @@ class TrainPipeline:
             model = PlVAE(self.config)
             transform_config = self.config.get('transforms_data', {})
             assert 'q' in transform_config and 'y' in transform_config, "Missing 'q' or 'y' in transform config"
-            dataset = HDF5Dataset(**self.config['dataset'],
+            # Ensure required metadata for SAS fitting is requested
+            ds_cfg = dict(self.config['dataset'])
+            req_meta = list(ds_cfg.get('requested_metadata', []) or [])
+            for k in ['diameter_nm', 'concentration_original']:
+                if k not in req_meta:
+                    req_meta.append(k)
+            ds_cfg['requested_metadata'] = req_meta
+            dataset = HDF5Dataset(**ds_cfg,
                                   transformer_q=Pipeline(transform_config["q"]),
                                   transformer_y=Pipeline(transform_config["y"]))
             curves_config = {'recon': {'truth_key': 'data_y', 'pred_keys': ["recon"],
                                        'use_loglog': self.config['training']['use_loglog']}}
             callbacks.append(MAEMetricCallback())
+            # Lazy import to keep static analyzer happy
+            try:
+                from src.model.callbacks.metrics_callback import SASFitMetricCallback
+                callbacks.append(SASFitMetricCallback())
+            except Exception:
+                pass
         else:
             raise ValueError(f"Unknown model type: {model_type}. Expected 'pair' or 'vae'.")
 
@@ -129,7 +154,7 @@ class TrainPipeline:
             train_cfg = common_cfg.copy()
             train_cfg['artifact_file'] = 'train_plot.png'
             callbacks.insert(0, InferencePlotCallback(curves_config=curves_config,
-                                                      output_dir=self.log_path / "inference_results",
+                                                      output_dir=str(self.log_path / "inference_results"),
                                                       **train_cfg))
 
         # Save transformer config
@@ -174,7 +199,7 @@ class TrainPipeline:
 
         if self.config['model']['type'].lower() == 'vae':
             # select colonne 1 for saxs, colonne 2 for les
-            if  "saxs" in self.config['run_name']: 
+            if  "saxs" in self.config['run_name']:
                 train_csv_indices = [pair[1] for pair in train_csv_indices_saxs_les]
                 val_csv_indices = [pair[1] for pair in val_csv_indices_saxs_les]
             elif "les" in self.config['run_name'] :
