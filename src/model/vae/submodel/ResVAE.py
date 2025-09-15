@@ -137,9 +137,23 @@ class ResVAE(nn.Module):
         else:
             raise ValueError("strat must be 'q' or 'y'")
 
+        if torch.isnan(x).any() or torch.isinf(x).any():
+            raise RuntimeError("[ResVAE] NaN or inf detected in input x")
+
         mu, logvar = self.encode(x)
+        if torch.isnan(mu).any() or torch.isinf(mu).any():
+            raise RuntimeError("[ResVAE] NaN or inf detected in mu")
+        if torch.isnan(logvar).any() or torch.isinf(logvar).any():
+            raise RuntimeError("[ResVAE] NaN or inf detected in logvar")
+
         z = self.reparameterize(mu, logvar)
+        if torch.isnan(z).any() or torch.isinf(z).any():
+            raise RuntimeError("[ResVAE] NaN or inf detected in latent variable z")
+
         recon = self.decode(z)
+        if torch.isnan(recon).any() or torch.isinf(recon).any():
+            raise RuntimeError("[ResVAE] NaN or inf detected in reconstructed output")
+
         return {
             "recon": recon,
             "mu": mu,

@@ -107,17 +107,22 @@ class VAE(nn.Module):
         else:
             raise ValueError("strat must be 'q' or 'y'")
 
-        assert not torch.isnan(x).any(), "NaN detected in input data"
+        if torch.isnan(x).any() or torch.isinf(x).any():
+            raise RuntimeError("[VAE] NaN or inf detected in input x")
 
         mu, logvar = self.encode(x)
-        assert not torch.isnan(mu).any(), "NaN detected in mu"
-        assert not torch.isnan(logvar).any(), "NaN detected in logvar"
+        if torch.isnan(mu).any() or torch.isinf(mu).any():
+            raise RuntimeError("[VAE] NaN or inf detected in mu")
+        if torch.isnan(logvar).any() or torch.isinf(logvar).any():
+            raise RuntimeError("[VAE] NaN or inf detected in logvar")
 
         z = self.reparameterize(mu, logvar)
-        assert not torch.isnan(z).any(), "NaN detected in latent variable z"
+        if torch.isnan(z).any() or torch.isinf(z).any():
+            raise RuntimeError("[VAE] NaN or inf detected in latent variable z")
 
         recon = self.decode(z)
-        assert not torch.isnan(recon).any(), "NaN detected in reconstructed output"
+        if torch.isnan(recon).any() or torch.isinf(recon).any():
+            raise RuntimeError("[VAE] NaN or inf detected in reconstructed output")
 
         return {
             "recon": recon,

@@ -146,9 +146,27 @@ class ResVAEBN(nn.Module):
         else:
             raise ValueError("strat must be 'q' or 'y'")
 
+        if torch.isnan(x).any() or torch.isinf(x).any():
+            raise RuntimeError("[ResVAEBN] NaN or inf detected in input x")
+
+
         mu, logvar = self.encode(x)
+        if torch.isnan(mu).any() or torch.isinf(mu).any():
+            raise RuntimeError("[ResVAEBN] NaN or inf detected in mu")
+        if torch.isnan(logvar).any() or torch.isinf(logvar).any():
+            raise RuntimeError("[ResVAEBN] NaN or inf detected in logvar")
+
+        # Clamp logvar pour éviter exp(logvar/2) inf/NaN
+        logvar = torch.clamp(logvar, min=-10, max=10)
+
         z = self.reparameterize(mu, logvar)
+        if torch.isnan(z).any() or torch.isinf(z).any():
+            raise RuntimeError("[ResVAEBN] NaN or inf detected in latent variable z")
+
         recon = self.decode(z)
+        if torch.isnan(recon).any() or torch.isinf(recon).any():
+            raise RuntimeError("[ResVAEBN] NaN or inf detected in reconstructed output")
+
         return {
             "recon": recon,
             "mu": mu,

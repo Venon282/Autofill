@@ -13,7 +13,7 @@ training:
   output_dir: "/projects/pnria/julien/autofill/runs/"
   num_gpus: 1
   num_nodes: 1
-  num_epochs: 250
+  num_epochs: 100
   patience: 20
   use_loglog: false
 
@@ -29,7 +29,7 @@ training:
 
   max_lr: 1.0e-05
 
-  T_max: 75
+  T_max: 25
   eta_min: 1.0e-10
   array_train_indices: /projects/pnria/caroline/AUTOFILL/data_sept_25/train_(pair_saxs_les).npy
   array_val_indices: /projects/pnria/caroline/AUTOFILL/data_sept_25/val_(pair_saxs_les).npy

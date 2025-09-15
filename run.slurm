@@ -3,7 +3,7 @@
 #SBATCH --output=log.err
 #SBATCH --error=log.err
 
-#SBATCH --partition=GPUNodes
+#SBATCH --partition=RTX6000Node
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1
 #SBATCH --ntasks-per-node=1

@@ -194,10 +194,17 @@ class PairHDF5Dataset(Dataset):
         data_q_les = torch.as_tensor(data_q_les, dtype=torch.float32)
         data_y_les = torch.as_tensor(data_y_les, dtype=torch.float32)
 
+        # Vérification NaN/inf sur les données d'entrée (avant batch)
+        for name, arr in zip([
+            'data_q_saxs', 'data_y_saxs', 'data_q_les', 'data_y_les'],
+            [data_q_saxs, data_y_saxs, data_q_les, data_y_les]):
+            if torch.isnan(arr).any() or torch.isinf(arr).any():
+                raise RuntimeError(f"[PairHDF5Dataset][idx={idx}] {name} contient NaN ou inf!")
+
         # return data_q, data_y, metadata, self.csv_index[original_idx]
         return {"data_q_saxs": data_q_saxs.unsqueeze(0), "data_y_saxs": data_y_saxs.unsqueeze(0),
-                "data_q_les": data_q_les.unsqueeze(0), "data_y_les": data_y_les.unsqueeze(0),
-                "metadata": metadata, "csv_index": self.csv_index[original_idx]}
+            "data_q_les": data_q_les.unsqueeze(0), "data_y_les": data_y_les.unsqueeze(0),
+            "metadata": metadata, "csv_index": self.csv_index[original_idx]}
 
     def close(self):
         """Close the HDF5 file"""
