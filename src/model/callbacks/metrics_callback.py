@@ -159,7 +159,8 @@ class SASFitMetricCallback(pl.Callback):
         self.qmax_fit = qmax_fit
         self.val_percentage = val_percentage  # Pourcentage du dataset de validation à utiliser
         self.factor = factor_scale_to_conc
-        self.n_processes = n_processes or max(1, mp.cpu_count() - 1)  # Utilise tous les CPU sauf 1
+        self.n_processes = n_processes or max(1, mp.cpu_count() - 1)
+        print(f"SASFitMetricCallback initialisé avec qmin={qmin_fit}, qmax={qmax_fit}, val_percentage={val_percentage}, factor={factor_scale_to_conc}, n_processes={self.n_processes}")
         self.best = {"diameter_mae": float("inf"), "concentration_mae": float("inf")}
 
     def on_validation_epoch_end(self, trainer, pl_module):
@@ -221,8 +222,6 @@ class SASFitMetricCallback(pl.Callback):
             pl_module.train()
             return
 
-        # Prendre un échantillon aléatoire du pourcentage demandé
-        np.random.seed(42)  # Pour la reproductibilité
         sample_indices = np.random.choice(total_samples, size=n_samples, replace=False)
         selected_samples = [all_samples[i] for i in sample_indices]
 
