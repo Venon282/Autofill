@@ -79,7 +79,7 @@ class HDF5Dataset(Dataset):
         missing = set(requested) - set(valid)
 
         if missing:
-            warnings.warn(f"Missing requested metadata columns: {missing}")
+            warnings.warn(f"Missing requested metadata columns: {missing}, available: {available}")
 
         return valid
 

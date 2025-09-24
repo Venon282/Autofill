@@ -1,529 +1,636 @@
+#!/usr/bin/env python3
+"""
+Script optimisé pour calculer les métriques de validation sur un dataset H5.
+Refactorisé pour être plus maintenable et sans dépendance à metrics_callback.
+"""
+
 import argparse
-import sys
+import json
+import multiprocessing as mp
 import os
+import sys
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple, Any
+
+import numpy as np
+import pandas as pd
 import torch
 import yaml
-import numpy as np
-import json
-import pandas as pd
-from torch.utils.data import DataLoader
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
+# Ajouter le chemin src au path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.model.inferencer import BaseInferencer, move_to_device
-from src.model.callbacks.metrics_callback import SASFitMetricCallback, MAEMetricCallback
 from src.dataset.datasetH5 import HDF5Dataset
 from src.model.pairvae.pl_pairvae import PlPairVAE
 from src.model.vae.pl_vae import PlVAE
 
 
-class MetricsInferencer(BaseInferencer):
-    """Inférenceur pour calculer les métriques de validation sur un dataset H5"""
+def move_to_device(batch: Any, device: torch.device) -> Any:
+    """Déplace récursivement les tenseurs vers le device spécifié."""
+    if isinstance(batch, torch.Tensor):
+        return batch.to(device)
+    elif isinstance(batch, dict):
+        return {k: move_to_device(v, device) for k, v in batch.items()}
+    elif isinstance(batch, (list, tuple)):
+        return type(batch)(move_to_device(v, device) for v in batch)
+    return batch
 
-    def __init__(self, output_dir, checkpoint_path, hparams, data_path, conversion_dict_path=None,
-                 batch_size=32, qmin_fit=0.001, qmax_fit=0.3,
-                 eval_percentage=1.0, sasfit_percentage=0.1, factor_scale_to_conc=20878,
-                 n_processes=None, random_state=42):
 
-        # Paramètres pour l'évaluation
-        self.eval_percentage = eval_percentage
-        self.sasfit_percentage = sasfit_percentage
-        self.random_state = random_state
+def sasfit_single_sample(args: Tuple) -> Optional[Tuple[float, float, float, float, float, float]]:
+    """
+    Fit un modèle cylindrique sur un échantillon SAXS pour récupérer diamètre et concentration.
 
-        # Initialiser les callbacks pour les métriques
-        self.mae_callback = MAEMetricCallback()
-        self.sasfit_callback = SASFitMetricCallback(
-            qmin_fit=qmin_fit,
-            qmax_fit=qmax_fit,
-            val_percentage=1.0,  # On gère nous-mêmes l'échantillonnage
-            factor_scale_to_conc=factor_scale_to_conc,
-            n_processes=n_processes
-        )
+    Args:
+        args: Tuple contenant (sample_data, qmin_fit, qmax_fit, factor_scale_to_conc)
 
-        # Pas de sauvegarde de plots pour les métriques
-        super().__init__(output_dir, False, checkpoint_path, hparams, data_path,
-                        conversion_dict_path, sample_frac=1.0, batch_size=batch_size)
+    Returns:
+        Tuple (diam_err, conc_err, pred_diam_nm, pred_conc, true_diam, true_conc) ou None si échec
+    """
+    try:
+        from lmfit import Parameters, minimize
+        from sasmodels.core import load_model
+        from sasmodels.data import empty_data1D
+        from sasmodels.direct_model import DirectModel
 
-        self.results = {}
-        self.detailed_results = []
+        sample_data, qmin_fit, qmax_fit, factor = args
+        y_np, q_np, true_diam, true_conc = sample_data
 
-    def load_model(self, path):
-        """Charge le modèle depuis le checkpoint"""
-        model_type = self.config['model']['type'].lower()
-        if model_type == 'vae':
-            return PlVAE.load_from_checkpoint(checkpoint_path=path)
-        elif model_type == 'pair_vae':
-            return PlPairVAE.load_from_checkpoint(checkpoint_path=path)
-        else:
-            raise ValueError(f"Model type {model_type} is not supported.")
-
-    def get_input_dim(self):
-        """Retourne la dimension d'entrée du modèle"""
-        model_type = self.config['model']['type'].lower()
-        if model_type == 'vae':
-            return self.config["model"]["args"]["input_dim"]
-        else:
+        # Masque pour la plage de q
+        mask = (q_np >= qmin_fit) & (q_np <= qmax_fit)
+        if not np.any(mask):
             return None
 
-    def compute_dataset(self, input_dim):
-        """Configure le dataset H5 pour les métriques"""
-        if not self.data_path.endswith(".h5"):
-            raise ValueError("MetricsInferencer only supports HDF5 files (.h5)")
+        q_fit = q_np[mask]
+        i_fit = y_np[mask]
+
+        # Modèle cylindrique et paramètres physiques
+        cyl_model = load_model("cylinder")
+        sld_particle = 7.76211e11 * 1e-16  # SLD Ag dans H2O
+        sld_solvent = 9.39845e10 * 1e-16
+
+        # Configuration du fitting
+        data_fit = empty_data1D(q_fit)
+        calc_fit = DirectModel(data_fit, cyl_model)
+
+        params = Parameters()
+        params.add("scale", value=1e14/factor, min=1e6/factor, max=1e20/factor)
+        params.add("radius", value=250.0, min=90.0, max=510.0)
+        params.add("length", value=100.0, min=40.0, max=160.0)
+        params.add("background", value=0, vary=False)
+
+        def residual_log(p):
+            pv = p.valuesdict()
+            I = calc_fit(scale=pv["scale"], background=pv["background"],
+                         radius=pv["radius"], length=pv["length"],
+                         sld=sld_particle, sld_solvent=sld_solvent,
+                         radius_pd=0.0, length_pd=0.0)
+            eps = 1e-30
+            return np.log10(np.clip(i_fit, eps, None)) - np.log10(np.clip(I, eps, None))
+
+        res = minimize(residual_log, params, method="differential_evolution",
+                      minimizer_kws=dict(popsize=500, maxiter=150, polish=True,
+                                       tol=1e-5, updating="deferred", workers=1))
+
+        res = minimize(residual_log, res.params, method="least_squares",
+                      loss="linear", f_scale=0.1, xtol=1e-6, ftol=1e-6,
+                      gtol=1e-6, max_nfev=40000)
+
+        # Extraction des résultats
+        fitted_scale = res.params["scale"].value
+        radius_A = res.params["radius"].value
+
+        pred_conc = float(fitted_scale * factor)
+        radius_nm = float(np.rint(radius_A / 10.0))
+        pred_diam_nm = float(radius_nm * 2.0)
+
+        diam_err = abs(pred_diam_nm - true_diam)
+        conc_err = abs(pred_conc - true_conc)
+
+        return (diam_err, conc_err, pred_diam_nm, pred_conc, true_diam, true_conc)
+
+    except Exception:
+        return None
+
+
+class ValidationMetricsCalculator:
+    """Calculateur optimisé des métriques de validation."""
+
+    def __init__(self, checkpoint_path: str, data_path: str, output_dir: str,
+                 conversion_dict_path: Optional[str] = None, batch_size: int = 32,
+                 eval_percentage: float = 0.1, sasfit_percentage: float = 0.0005,
+                 qmin_fit: float = 0.001, qmax_fit: float = 0.3,
+                 factor_scale_to_conc: float = 20878, n_processes: Optional[int] = None,
+                 random_state: int = 42, signal_length: Optional[int] = None):
+
+        self.checkpoint_path = Path(checkpoint_path)
+        self.data_path = Path(data_path)
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+
+        self.batch_size = batch_size
+        self.eval_percentage = eval_percentage
+        self.sasfit_percentage = sasfit_percentage
+        self.qmin_fit = qmin_fit
+        self.qmax_fit = qmax_fit
+        self.factor_scale_to_conc = factor_scale_to_conc
+        self.n_processes = n_processes or max(1, mp.cpu_count() - 1)
+        self.random_state = random_state
+        self.signal_length = signal_length
+
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # Charger config et modèle
+        self._load_model_and_config()
+        self._setup_dataset(conversion_dict_path)
+
+        print(f"✓ Modèle chargé: {self.model_type}")
+        print(f"✓ Dataset: {len(self.dataset)} échantillons")
+        print(f"✓ Device: {self.device}")
+        if self.signal_length:
+            print(f"✓ Taille signal forcée: {self.signal_length} points")
+
+    def _load_model_and_config(self):
+        """Charge le modèle et la configuration depuis le checkpoint."""
+        checkpoint = torch.load(self.checkpoint_path, map_location='cpu')
+        self.config = checkpoint['hyper_parameters']['config']
+        self.model_type = self.config['model']['type'].lower()
+
+        if self.model_type == 'vae':
+            self.model = PlVAE.load_from_checkpoint(self.checkpoint_path)
+        elif self.model_type == 'pair_vae':
+            self.model = PlPairVAE.load_from_checkpoint(self.checkpoint_path)
+        else:
+            raise ValueError(f"Type de modèle non supporté: {self.model_type}")
+
+        self.model.to(self.device).eval()
+
+    def _setup_dataset(self, conversion_dict_path: Optional[str]):
+        """Configure le dataset H5 avec les transformations."""
+        if conversion_dict_path:
+            with open(conversion_dict_path, 'r') as f:
+                conversion_dict = json.load(f)
+        else:
+            conversion_dict = self.config.get("conversion_dict")
 
         self.dataset = HDF5Dataset(
-            self.data_path,
-            sample_frac=1.0,  # Toujours charger le dataset complet
+            str(self.data_path),
+            sample_frac=1.0,
             transformer_q=self.config["transforms_data"]["q"],
             transformer_y=self.config["transforms_data"]["y"],
             metadata_filters=self.config["dataset"]["metadata_filters"],
-            conversion_dict=self.conversion_dict,
-            requested_metadata=['shape', 'material', 'concentration', 'dimension1',
-                              'dimension2', 'opticalPathLength', 'd', 'h',
-                              'diameter_nm', 'concentration_original']
+            conversion_dict=conversion_dict,
+            requested_metadata=['diameter_nm', 'length_nm', 'concentration_original', 'concentration_scaled']
         )
-        self.format = 'h5'
-        self.invert = self.dataset.invert_transforms_func()
+        self.invert_transforms = self.dataset.invert_transforms_func()
 
-    def compute_detailed_metrics(self):
-        """Calcule les métriques détaillées avec l'échantillonnage spécifié"""
-        print(f"Calcul des métriques détaillées sur {self.eval_percentage*100:.1f}% du dataset...")
+    def _extract_reconstruction(self, outputs: Any) -> Optional[torch.Tensor]:
+        """Extrait la reconstruction des outputs du modèle."""
+        if isinstance(outputs, dict):
+            recon = outputs.get('recon')
+            if recon is None:
+                for key, value in outputs.items():
+                    if "recon" in key:
+                        return value
+            return recon
+        elif isinstance(outputs, (tuple, list)):
+            return outputs[1] if len(outputs) > 1 else outputs[0]
+        return outputs
 
-        # Set random seed
-        np.random.seed(self.random_state)
-        torch.manual_seed(self.random_state)
+    def compute_reconstruction_metrics(self) -> Dict[str, Any]:
+        """Calcule les métriques de reconstruction (MAE, MSE, R², RMSE)."""
+        print(f"\n📊 Calcul métriques reconstruction ({self.eval_percentage*100:.1f}% dataset)")
 
-        # Calculer le nombre d'échantillons à traiter
+        # Échantillonnage
+        # np.random.seed(self.random_state)
+        # torch.manual_seed(self.random_state)
+
         total_samples = len(self.dataset)
-        samples_to_process = int(total_samples * self.eval_percentage)
+        n_samples = int(total_samples * self.eval_percentage)
+        indices = np.random.choice(total_samples, n_samples, replace=False)
 
-        # Générer les indices aléatoirement
-        all_indices = np.arange(total_samples)
-        np.random.shuffle(all_indices)
-        selected_indices = all_indices[:samples_to_process]
+        subset = Subset(self.dataset, indices)
+        loader = DataLoader(subset, batch_size=self.batch_size, shuffle=False)
 
-        print(f"Évaluation de {samples_to_process}/{total_samples} échantillons...")
-
-        # Créer un subset du dataset
-        from torch.utils.data import Subset
-        subset_dataset = Subset(self.dataset, selected_indices)
-        loader = DataLoader(subset_dataset, batch_size=self.batch_size, shuffle=False)
-
-        all_predictions = []
-        all_true_values = []
-        processed_count = 0
+        all_predictions, all_true_values = [], []
+        detailed_results = []
 
         with torch.no_grad():
-            for batch in tqdm(loader, desc="Computing detailed metrics"):
+            for batch in tqdm(loader, desc="Computing reconstruction metrics"):
                 batch = move_to_device(batch, self.device)
-                data_y = batch["data_y"]
-                true_values = data_y.squeeze(1)
 
+                # Prédiction
                 outputs = self.model(batch)
-
-                # Extraire la reconstruction
-                if isinstance(outputs, dict):
-                    recon = outputs.get('recon', None)
-                    if recon is None:
-                        for key, value in outputs.items():
-                            if "recon" in key:
-                                recon = value
-                                break
-                else:
-                    recon = outputs[1] if isinstance(outputs, tuple) else outputs
-
+                recon = self._extract_reconstruction(outputs)
                 if recon is None:
                     continue
 
-                # Ajuster les dimensions
-                if isinstance(recon, torch.Tensor) and recon.ndim > true_values.ndim:
+                # Préparation des données
+                true_values = batch["data_y"].squeeze(1)
+
+                if recon.ndim > true_values.ndim:
                     recon = recon.squeeze(1)
 
-                # Convertir en numpy
-                recon_np = recon.detach().cpu().numpy()
-                true_np = true_values.detach().cpu().numpy()
-
-                # Gérer les indices
-                batch_indices = selected_indices[processed_count:processed_count + recon_np.shape[0]]
+                # Inversion des transformations vers l'espace physique
+                true_cpu = true_values.detach().cpu()
+                recon_cpu = recon.detach().cpu()
+                true_np = true_cpu.numpy()
+                recon_np = recon_cpu.numpy()
 
                 # Métadonnées
                 metadata_batch = batch.get("metadata", {})
+                lengths = batch.get("len")
 
-                # Stocker les résultats pour chaque échantillon
+                # Métriques par échantillon
                 for i in range(recon_np.shape[0]):
-                    sample_idx = int(batch_indices[i])
-                    pred_values = recon_np[i].flatten()
-                    true_vals = true_np[i].flatten()
+                    # Troncature selon signal_length forcé ou longueur réelle
+                    if self.signal_length is not None:
+                        # Utiliser la taille de signal forcée
+                        max_len = min(self.signal_length, true_np.shape[1], recon_np.shape[1])
+                        true_vals = true_np[i][:max_len].flatten()
+                        pred_vals = recon_np[i][:max_len].flatten()
+                    elif lengths is not None:
+                        # Utiliser la longueur réelle du dataset
+                        length = int(lengths[i].item())
+                        true_vals = true_np[i][:length].flatten()
+                        pred_vals = recon_np[i][:length].flatten()
+                    else:
+                        # Utiliser la taille complète
+                        true_vals = true_np[i].flatten()
+                        pred_vals = recon_np[i].flatten()
 
-                    # Calculer les métriques par échantillon
-                    mae_sample = mean_absolute_error(true_vals, pred_values)
-                    mse_sample = mean_squared_error(true_vals, pred_values)
-                    r2_sample = r2_score(true_vals, pred_values)
+                    # Calcul métriques
+                    mae = mean_absolute_error(true_vals, pred_vals)
+                    mse = mean_squared_error(true_vals, pred_vals)
+                    r2 = r2_score(true_vals, pred_vals)
 
-                    # Extraire les métadonnées pour cet échantillon
-                    sample_metadata = {}
+                    # Métadonnées échantillon
+                    sample_meta = {}
                     for key, values in metadata_batch.items():
                         if hasattr(values, '__getitem__') and len(values) > i:
-                            val = values[i]
-                            if hasattr(val, 'item'):
-                                val = val.item()
-                            sample_metadata[key] = val
+                            val = values[i].item() if hasattr(values[i], 'item') else values[i]
+                            sample_meta[key] = val
 
-                    # Ajouter aux résultats détaillés
-                    detailed_row = {
-                        'sample_index': sample_idx,
-                        'mae': mae_sample,
-                        'mse': mse_sample,
-                        'r2_score': r2_sample,
-                        'rmse': np.sqrt(mse_sample)
-                    }
+                    detailed_results.append({
+                        'mae': mae, 'mse': mse, 'r2_score': r2,
+                        'rmse': np.sqrt(mse), 'signal_length': len(pred_vals),
+                        **sample_meta
+                    })
 
-                    # Ajouter les métadonnées
-                    detailed_row.update(sample_metadata)
-                    self.detailed_results.append(detailed_row)
-
-                    # Stocker pour les métriques globales
-                    all_predictions.extend(pred_values)
+                    all_predictions.extend(pred_vals)
                     all_true_values.extend(true_vals)
 
-                processed_count += recon_np.shape[0]
+        # Métriques globales
+        if all_predictions:
+            all_pred = np.array(all_predictions)
+            all_true = np.array(all_true_values)
 
-        # Calculer les métriques globales
-        if all_predictions and all_true_values:
-            all_pred_np = np.array(all_predictions)
-            all_true_np = np.array(all_true_values)
-
-            global_mae = mean_absolute_error(all_true_np, all_pred_np)
-            global_mse = mean_squared_error(all_true_np, all_pred_np)
-            global_rmse = np.sqrt(global_mse)
-            global_r2 = r2_score(all_true_np, all_pred_np)
-
-            # Métriques additionnelles
-            global_mean_pred = np.mean(all_pred_np)
-            global_mean_true = np.mean(all_true_np)
-            global_std_pred = np.std(all_pred_np)
-            global_std_true = np.std(all_true_np)
-
-            metrics_results = {
-                'global_mae': float(global_mae),
-                'global_mse': float(global_mse),
-                'global_rmse': float(global_rmse),
-                'global_r2_score': float(global_r2),
-                'mean_prediction': float(global_mean_pred),
-                'mean_true': float(global_mean_true),
-                'std_prediction': float(global_std_pred),
-                'std_true': float(global_std_true),
-                'samples_evaluated': len(self.detailed_results),
+            results = {
+                'global_mae': float(mean_absolute_error(all_true, all_pred)),
+                'global_mse': float(mean_squared_error(all_true, all_pred)),
+                'global_rmse': float(np.sqrt(mean_squared_error(all_true, all_pred))),
+                'global_r2': float(r2_score(all_true, all_pred)),
+                'mean_prediction': float(np.mean(all_pred)),
+                'mean_true': float(np.mean(all_true)),
+                'std_prediction': float(np.std(all_pred)),
+                'std_true': float(np.std(all_true)),
+                'samples_evaluated': len(detailed_results),
                 'total_data_points': len(all_predictions),
-                'eval_percentage_used': self.eval_percentage,
-                'random_state_used': self.random_state
+                'eval_percentage': self.eval_percentage
             }
 
-            print(f"\nMétriques globales calculées sur {len(self.detailed_results)} échantillons:")
-            print(f"  MAE global: {global_mae:.6f}")
-            print(f"  MSE global: {global_mse:.6f}")
-            print(f"  RMSE global: {global_rmse:.6f}")
-            print(f"  R² global: {global_r2:.6f}")
+            # Sauvegarde détails
+            if detailed_results:
+                df = pd.DataFrame(detailed_results)
+                csv_path = self.output_dir / "reconstruction_metrics_detailed.csv"
+                df.to_csv(csv_path, index=False)
+                print(f"✓ Détails sauvés: {csv_path}")
 
-            return metrics_results
+            print(f"  MAE: {results['global_mae']:.6f}")
+            print(f"  R²: {results['global_r2']:.6f}")
 
-        return {"samples_evaluated": 0}
+            return results
 
-    def compute_sasfit_metrics(self):
-        """Calcule les métriques SASFit uniquement sur le pourcentage spécifié"""
-        print(f"Calcul des métriques SASFit sur {self.sasfit_percentage*100:.1f}% du dataset...")
+        return {'samples_evaluated': 0}
 
-        # Set random seed
-        np.random.seed(self.random_state)
+    def compute_sasfit_metrics(self) -> Dict[str, Any]:
+        """Calcule les métriques SASFit (diamètre et concentration via fitting physique)."""
+        print(f"\n🔬 Calcul métriques SASFit ({self.sasfit_percentage*100:.2f}% dataset)")
 
-        # Calculer le nombre d'échantillons pour SASFit
+        # Échantillonnage
+        # np.random.seed(self.random_state)
         total_samples = len(self.dataset)
-        sasfit_samples = int(total_samples * self.sasfit_percentage)
+        n_samples = int(total_samples * self.sasfit_percentage)
 
-        if sasfit_samples == 0:
-            print("Aucun échantillon à traiter pour SASFit!")
-            return {"sasfit_samples": 0}
+        if n_samples == 0:
+            return {'sasfit_samples': 0}
 
-        # Échantillonnage aléatoire direct
-        all_indices = np.arange(total_samples)
-        np.random.shuffle(all_indices)
-        sasfit_indices = all_indices[:sasfit_samples]
+        indices = np.random.choice(total_samples, n_samples, replace=False)
+        subset = Subset(self.dataset, indices)
+        loader = DataLoader(subset, batch_size=self.batch_size, shuffle=False)
 
-        print(f"Traitement de {sasfit_samples}/{total_samples} échantillons pour SASFit...")
+        # Collecte des échantillons pour prédictions ET vérité terrain
+        pred_samples = []  # Échantillons prédits
+        true_samples = []  # Échantillons de vérité terrain
 
-        # Créer un subset pour SASFit
-        from torch.utils.data import Subset
-        sasfit_dataset = Subset(self.dataset, sasfit_indices)
-        loader = DataLoader(sasfit_dataset, batch_size=self.batch_size, shuffle=False)
-
-        all_samples = []
-        sasfit_detailed = []
-        processed_count = 0
-
-        # Collecter uniquement les échantillons nécessaires
         with torch.no_grad():
             for batch in tqdm(loader, desc="Collecting SASFit samples"):
                 batch = move_to_device(batch, self.device)
+
                 outputs = self.model(batch)
-
-                # Extraire la reconstruction
-                if isinstance(outputs, dict):
-                    recon = outputs.get('recon', None)
-                    if recon is None:
-                        for key, value in outputs.items():
-                            if "recon" in key:
-                                recon = value
-                                break
-                else:
-                    recon = outputs[1] if isinstance(outputs, tuple) else outputs
-
+                recon = self._extract_reconstruction(outputs)
                 if recon is None:
                     continue
 
-                # Préparer les données
-                y_pred = recon.detach().cpu()
-                if y_pred.ndim == 3 and y_pred.size(1) == 1:
-                    y_pred = y_pred.squeeze(1)
-
+                # Données prédites
                 q_batch = batch["data_q"].detach().cpu()
-                if q_batch.ndim == 3 and q_batch.size(1) == 1:
+                if recon.ndim == 3:
+                    recon = recon.squeeze(1)
+                if q_batch.ndim == 3:
                     q_batch = q_batch.squeeze(1)
 
-                # Vérifier les métadonnées
+                recon_inverted, q_inverted = self.invert_transforms(recon.cpu(), q_batch)
+
+                #temoin
+                true_values = batch["data_y"].detach().cpu().squeeze(1)
+                true_inverted, q_true_inverted = self.invert_transforms(true_values, q_batch)
+
                 meta = batch.get("metadata", {})
-                if not (isinstance(meta, dict) and 'diameter_nm' in meta and 'concentration_original' in meta):
+                if not ('diameter_nm' in meta and 'concentration_scaled' in meta):
                     continue
 
                 diam_true = meta['diameter_nm'].detach().cpu().numpy()
-                conc_true = meta['concentration_original'].detach().cpu().numpy()
+                conc_true = meta['concentration_scaled'].detach().cpu().numpy()
+                lengths = batch.get("len")
 
-                # Récupérer les indices originaux
-                batch_indices = sasfit_indices[processed_count:processed_count + y_pred.shape[0]]
+                # Collecte par échantillon
+                for i in range(recon_inverted.shape[0]):
+                    # Données prédites
+                    y_pred = recon_inverted[i].numpy()
+                    q_pred = q_inverted[i].numpy()
 
-                # Collecter les échantillons
-                for i in range(y_pred.shape[0]):
-                    y_np = y_pred[i].numpy()
-                    q_np = q_batch[i].numpy()
+                    # Données vraies (témoin)
+                    y_true = true_inverted[i].numpy()
+                    q_true = q_true_inverted[i].numpy()
+
+                    # Appliquer la même troncature aux deux
+                    if self.signal_length is not None:
+                        max_len = min(self.signal_length, len(y_pred), len(q_pred), len(y_true), len(q_true))
+                        y_pred = y_pred[:max_len]
+                        q_pred = q_pred[:max_len]
+                        y_true = y_true[:max_len]
+                        q_true = q_true[:max_len]
+                    elif lengths is not None:
+                        length = int(lengths[i].item())
+                        y_pred = y_pred[:length]
+                        q_pred = q_pred[:length]
+                        y_true = y_true[:length]
+                        q_true = q_true[:length]
+
                     t_d = float(diam_true[i]) if np.ndim(diam_true) > 0 else float(diam_true)
                     t_c = float(conc_true[i]) if np.ndim(conc_true) > 0 else float(conc_true)
-                    sample_idx = int(batch_indices[i])
 
-                    all_samples.append((y_np, q_np, t_d, t_c, sample_idx))
+                    pred_samples.append((y_pred, q_pred, t_d, t_c))
+                    true_samples.append((y_true, q_true, t_d, t_c))
 
-                processed_count += y_pred.shape[0]
+        if not pred_samples or not true_samples:
+            return {'sasfit_samples': 0}
 
-        if not all_samples:
-            print("Aucun échantillon SASFit valide collecté!")
-            return {"sasfit_samples": 0}
+        print(f"  Fitting {len(pred_samples)} échantillons sur prédictions...")
+        print(f"  Fitting {len(true_samples)} échantillons sur vérité terrain (témoin)...")
 
-        print(f"Fitting SAS sur {len(all_samples)} échantillons...")
+        # Fitting parallèle pour les prédictions
+        pred_fit_args = [(sample, self.qmin_fit, self.qmax_fit, self.factor_scale_to_conc)
+                        for sample in pred_samples]
 
-        # Utiliser la fonction de fitting du callback
-        from src.model.callbacks.metrics_callback import fit_single_sample
-        import multiprocessing as mp
+        # Fitting parallèle pour la vérité terrain
+        true_fit_args = [(sample, self.qmin_fit, self.qmax_fit, self.factor_scale_to_conc)
+                        for sample in true_samples]
 
-        fit_args = [(sample[:4], self.sasfit_callback.qmin_fit,
-                    self.sasfit_callback.qmax_fit, self.sasfit_callback.factor)
-                   for sample in all_samples]
+        with mp.Pool(self.n_processes) as pool:
+            print("  🔮 Fitting sur prédictions...")
+            pred_results = pool.map(sasfit_single_sample, pred_fit_args)
 
-        diam_abs_err = []
-        conc_abs_err = []
-        count = 0
+            print("  ✅ Fitting sur vérité terrain (témoin)...")
+            true_results = pool.map(sasfit_single_sample, true_fit_args)
 
-        with mp.Pool(processes=self.sasfit_callback.n_processes) as pool:
-            results = pool.map(fit_single_sample, fit_args)
+        # Traitement résultats prédictions
+        pred_successful = [r for r in pred_results if r is not None]
+        true_successful = [r for r in true_results if r is not None]
 
-            for idx, result in enumerate(results):
-                if result is not None:
-                    diam_err, conc_err, pred_diam_nm, pred_conc, t_d, t_c = result
-                    sample_idx = all_samples[idx][4]  # L'index était le 5ème élément
+        results_dict = {}
 
-                    diam_abs_err.append(diam_err)
-                    conc_abs_err.append(conc_err)
+        if pred_successful:
+            pred_diam_errors = [r[0] for r in pred_successful]
+            pred_conc_errors = [r[1] for r in pred_successful]
 
-                    # Ajouter aux résultats détaillés SASFit
-                    sasfit_detailed.append({
-                        'sample_index': sample_idx,
-                        'true_diameter_nm': t_d,
-                        'pred_diameter_nm': pred_diam_nm,
-                        'true_concentration': t_c,
-                        'pred_concentration': pred_conc,
-                        'diameter_abs_error': diam_err,
-                        'concentration_abs_error': conc_err
-                    })
+            # Résultats détaillés prédictions
+            pred_detailed = []
+            for i, (diam_err, conc_err, pred_diam, pred_conc, true_diam, true_conc) in enumerate(pred_successful):
+                pred_detailed.append({
+                    'sample_index': i,
+                    'type': 'prediction',
+                    'true_diameter_nm': true_diam,
+                    'pred_diameter_nm': pred_diam,
+                    'true_concentration': true_conc,
+                    'pred_concentration': pred_conc,
+                    'diameter_abs_error': diam_err,
+                    'concentration_abs_error': conc_err
+                })
 
-                    count += 1
-
-        # Sauvegarder les détails SASFit en CSV
-        if sasfit_detailed:
-            df_sasfit = pd.DataFrame(sasfit_detailed)
-            sasfit_csv = os.path.join(self.output_dir, "sasfit_detailed_results.csv")
-            df_sasfit.to_csv(sasfit_csv, index=False)
-            print(f"Résultats SASFit détaillés sauvegardés dans {sasfit_csv}")
-
-        # Calculer les résultats
-        sasfit_results = {
-            "sasfit_samples": count,
-            "sasfit_total_processed": len(all_samples),
-            "sasfit_percentage_used": self.sasfit_percentage
-        }
-
-        if count > 0 and diam_abs_err and conc_abs_err:
-            diam_mae = float(sum(diam_abs_err) / len(diam_abs_err))
-            conc_mae = float(sum(conc_abs_err) / len(conc_abs_err))
-
-            # Calculer MSE et RMSE pour SASFit
-            diam_mse = float(sum(e**2 for e in diam_abs_err) / len(diam_abs_err))
-            conc_mse = float(sum(e**2 for e in conc_abs_err) / len(conc_abs_err))
-
-            sasfit_results.update({
-                "mae_diameter_nm": diam_mae,
-                "mae_concentration": conc_mae,
-                "mse_diameter_nm": diam_mse,
-                "mse_concentration": conc_mse,
-                "rmse_diameter_nm": float(np.sqrt(diam_mse)),
-                "rmse_concentration": float(np.sqrt(conc_mse))
+            results_dict.update({
+                'sasfit_pred_samples': len(pred_successful),
+                'mae_diameter_nm_pred': float(np.mean(pred_diam_errors)),
+                'mae_concentration_pred': float(np.mean(pred_conc_errors)),
+                'mse_diameter_nm_pred': float(np.mean([e**2 for e in pred_diam_errors])),
+                'mse_concentration_pred': float(np.mean([e**2 for e in pred_conc_errors])),
+                'rmse_diameter_nm_pred': float(np.sqrt(np.mean([e**2 for e in pred_diam_errors]))),
+                'rmse_concentration_pred': float(np.sqrt(np.mean([e**2 for e in pred_conc_errors])))
             })
 
-            print(f"SASFit terminé: {count}/{len(all_samples)} échantillons réussis")
-            print(f"Diamètre - MAE: {diam_mae:.2f} nm, MSE: {diam_mse:.2f}, RMSE: {np.sqrt(diam_mse):.2f}")
-            print(f"Concentration - MAE: {conc_mae:.2e}, MSE: {conc_mse:.2e}, RMSE: {np.sqrt(conc_mse):.2e}")
+            print(f"  📊 Prédictions - Diamètre MAE: {results_dict['mae_diameter_nm_pred']:.2f} nm")
+            print(f"  📊 Prédictions - Concentration MAE: {results_dict['mae_concentration_pred']:.2e}")
 
-        return sasfit_results
+        if true_successful:
+            true_diam_errors = [r[0] for r in true_successful]
+            true_conc_errors = [r[1] for r in true_successful]
 
-    def infer_and_save(self):
-        """Calcule et sauvegarde les métriques"""
-        print(f"Évaluation avec eval_percentage={self.eval_percentage*100:.1f}%, sasfit_percentage={self.sasfit_percentage*100:.1f}% (random_state={self.random_state})")
+            # Résultats détaillés vérité terrain
+            true_detailed = []
+            for i, (diam_err, conc_err, pred_diam, pred_conc, true_diam, true_conc) in enumerate(true_successful):
+                true_detailed.append({
+                    'sample_index': i,
+                    'type': 'ground_truth',
+                    'true_diameter_nm': true_diam,
+                    'pred_diameter_nm': pred_diam,
+                    'true_concentration': true_conc,
+                    'pred_concentration': pred_conc,
+                    'diameter_abs_error': diam_err,
+                    'concentration_abs_error': conc_err
+                })
 
-        # Calculer les métriques détaillées
-        detailed_results = self.compute_detailed_metrics()
-        self.results.update(detailed_results)
+            results_dict.update({
+                'sasfit_true_samples': len(true_successful),
+                'mae_diameter_nm_true': float(np.mean(true_diam_errors)),
+                'mae_concentration_true': float(np.mean(true_conc_errors)),
+                'mse_diameter_nm_true': float(np.mean([e**2 for e in true_diam_errors])),
+                'mse_concentration_true': float(np.mean([e**2 for e in true_conc_errors])),
+                'rmse_diameter_nm_true': float(np.sqrt(np.mean([e**2 for e in true_diam_errors]))),
+                'rmse_concentration_true': float(np.sqrt(np.mean([e**2 for e in true_conc_errors])))
+            })
 
-        # Calculer les métriques SASFit
-        sasfit_results = self.compute_sasfit_metrics()
-        self.results.update(sasfit_results)
+            print(f"  ✅ Vérité terrain - Diamètre MAE: {results_dict['mae_diameter_nm_true']:.2f} nm")
+            print(f"  ✅ Vérité terrain - Concentration MAE: {results_dict['mae_concentration_true']:.2e}")
 
-        # Sauvegarder les résultats globaux
-        results_file = os.path.join(self.output_dir, "validation_metrics.json")
-        with open(results_file, 'w') as f:
-            json.dump(self.results, f, indent=2)
+        # Calcul du ratio de performance (prédiction / vérité terrain)
+        if pred_successful and true_successful:
+            diam_ratio = results_dict['mae_diameter_nm_pred'] / results_dict['mae_diameter_nm_true']
+            conc_ratio = results_dict['mae_concentration_pred'] / results_dict['mae_concentration_true']
 
-        # Sauvegarder en YAML pour lisibilité
-        results_yaml = os.path.join(self.output_dir, "validation_metrics.yaml")
-        with open(results_yaml, 'w') as f:
-            yaml.dump(self.results, f, default_flow_style=False)
+            results_dict.update({
+                'sasfit_diameter_mae_ratio': float(diam_ratio),
+                'sasfit_concentration_mae_ratio': float(conc_ratio)
+            })
 
-        # Sauvegarder les résultats détaillés en CSV
-        if self.detailed_results:
-            df = pd.DataFrame(self.detailed_results)
-            csv_file = os.path.join(self.output_dir, "reconstruction_metrics_detailed.csv")
-            df.to_csv(csv_file, index=False)
-            print(f"Métriques de reconstruction détaillées sauvegardées dans {csv_file}")
+            print(f"  📈 Ratio performance - Diamètre: {diam_ratio:.2f}x (1.0=parfait)")
+            print(f"  📈 Ratio performance - Concentration: {conc_ratio:.2f}x (1.0=parfait)")
 
-        # Créer un fichier de résumé des métriques
-        summary_file = os.path.join(self.output_dir, "metrics_summary.txt")
-        with open(summary_file, 'w') as f:
-            f.write("=== RÉSUMÉ DES MÉTRIQUES DE VALIDATION ===\n\n")
-            f.write(f"Dataset - Eval: {self.eval_percentage*100:.1f}% ({self.results.get('samples_evaluated', 0)} échantillons)\n")
-            f.write(f"Dataset - SASFit: {self.sasfit_percentage*100:.1f}% ({self.results.get('sasfit_samples', 0)} échantillons)\n")
-            f.write(f"Random state: {self.random_state}\n\n")
+        # Sauvegarde détails combinés
+        if pred_successful or true_successful:
+            all_detailed = []
+            if pred_successful:
+                all_detailed.extend(pred_detailed)
+            if true_successful:
+                all_detailed.extend(true_detailed)
 
-            f.write("MÉTRIQUES DE RECONSTRUCTION:\n")
-            f.write(f"  MAE global: {self.results.get('global_mae', 'N/A'):.6f}\n")
-            f.write(f"  MSE global: {self.results.get('global_mse', 'N/A'):.6f}\n")
-            f.write(f"  RMSE global: {self.results.get('global_rmse', 'N/A'):.6f}\n")
-            f.write(f"  R² global: {self.results.get('global_r2_score', 'N/A'):.6f}\n\n")
+            df = pd.DataFrame(all_detailed)
+            csv_path = self.output_dir / "sasfit_detailed_results.csv"
+            df.to_csv(csv_path, index=False)
+            print(f"✓ Détails SASFit sauvés: {csv_path}")
 
-            if 'sasfit_samples' in self.results and self.results['sasfit_samples'] > 0:
-                f.write("MÉTRIQUES SASFIT:\n")
-                f.write(f"  Échantillons traités: {self.results['sasfit_samples']}\n")
-                f.write(f"  Diamètre MAE: {self.results.get('mae_diameter_nm', 'N/A'):.2f} nm\n")
-                f.write(f"  Diamètre RMSE: {self.results.get('rmse_diameter_nm', 'N/A'):.2f} nm\n")
-                f.write(f"  Concentration MAE: {self.results.get('mae_concentration', 'N/A'):.2e}\n")
-                f.write(f"  Concentration RMSE: {self.results.get('rmse_concentration', 'N/A'):.2e}\n")
+        results_dict.update({
+            'sasfit_total_processed': len(pred_samples),
+            'sasfit_percentage': self.sasfit_percentage,
+            'sasfit_transforms_inverted': True
+        })
 
-        print(f"\nRésultats des métriques de validation:")
-        for key, value in self.results.items():
-            if isinstance(value, float):
-                if 'mae' in key.lower() or 'mse' in key.lower() or 'rmse' in key.lower():
-                    print(f"  {key}: {value:.6f}")
-                elif 'r2' in key.lower():
-                    print(f"  {key}: {value:.6f}")
-                else:
-                    print(f"  {key}: {value}")
-            else:
-                print(f"  {key}: {value}")
+        return results_dict
 
-        print(f"\nFichiers sauvegardés dans {self.output_dir}:")
-        print(f"  - reconstruction_metrics_detailed.csv (métriques par échantillon)")
-        print(f"  - sasfit_detailed_results.csv (résultats SASFit détaillés)")
-        print(f"  - validation_metrics.json (métriques globales)")
-        print(f"  - metrics_summary.txt (résumé lisible)")
+
+    def run_validation(self) -> Dict[str, Any]:
+        """Exécute le calcul complet des métriques de validation."""
+        print(f"🚀 Démarrage validation - Random State: {self.random_state}")
+
+        # Calcul des métriques
+        reconstruction_metrics = self.compute_reconstruction_metrics()
+        sasfit_metrics = self.compute_sasfit_metrics()
+
+        # Fusion résultats
+        results = {**reconstruction_metrics, **sasfit_metrics}
+        results.update({
+            'random_state': self.random_state,
+            'model_type': self.model_type,
+            'checkpoint_path': str(self.checkpoint_path),
+            'data_path': str(self.data_path)
+        })
+
+        # Sauvegarde
+        self._save_results(results)
+
+        print(f"\n✅ Validation terminée - Résultats dans {self.output_dir}")
+        return results
+
+    def _save_results(self, results: Dict[str, Any]):
+        """Sauvegarde les résultats sous différents formats."""
+        # JSON
+        json_path = self.output_dir / "validation_metrics.json"
+        with open(json_path, 'w') as f:
+            json.dump(results, f, indent=2)
+
+        # YAML
+        yaml_path = self.output_dir / "validation_metrics.yaml"
+        with open(yaml_path, 'w') as f:
+            yaml.dump(results, f, default_flow_style=False)
+
+        # Résumé texte
+        summary_path = self.output_dir / "metrics_summary.txt"
+        with open(summary_path, 'w') as f:
+            f.write("=== MÉTRIQUES DE VALIDATION ===\n\n")
+            f.write(f"Modèle: {results.get('model_type', 'N/A')}\n")
+            f.write(f"Échantillons reconstruction: {results.get('samples_evaluated', 0)}\n")
+            f.write(f"Échantillons SASFit: {results.get('sasfit_samples', 0)}\n")
+            f.write(f"Random state: {results.get('random_state', 'N/A')}\n\n")
+
+            if 'global_mae' in results:
+                f.write("RECONSTRUCTION:\n")
+                f.write(f"  MAE: {results['global_mae']:.6f}\n")
+                f.write(f"  RMSE: {results.get('global_rmse', 'N/A'):.6f}\n")
+                f.write(f"  R²: {results.get('global_r2', 'N/A'):.6f}\n\n")
+
+            if 'mae_diameter_nm' in results:
+                f.write("SASFIT:\n")
+                f.write(f"  Diamètre MAE: {results['mae_diameter_nm']:.2f} nm\n")
+                f.write(f"  Concentration MAE: {results['mae_concentration']:.2e}\n")
+
+        print(f"✓ Résultats sauvés: JSON, YAML, résumé")
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Calcul des métriques de validation sur un dataset H5")
-    parser.add_argument("-o", "--outputdir", type=str, required=True,
-                        help="Répertoire de sortie pour les résultats")
-    parser.add_argument("-c", "--checkpoint", type=str, required=True,
-                        help="Chemin vers le checkpoint du modèle")
-    parser.add_argument("-d", "--data_path", type=str, required=True,
-                        help="Chemin vers le fichier HDF5")
-    parser.add_argument("-cd", "--conversion_dict", type=str, required=False,
-                        help="Chemin vers le fichier de conversion des métadonnées")
-    parser.add_argument("-bs", "--batch_size", type=int, default=32,
-                        help="Taille du batch")
-    parser.add_argument("--qmin_fit", type=float, default=0.001,
-                        help="Q minimum pour le fitting SAS")
-    parser.add_argument("--qmax_fit", type=float, default=0.3,
-                        help="Q maximum pour le fitting SAS")
-    parser.add_argument("--eval_percentage", type=float, default=1.0,
-                        help="Pourcentage du dataset à utiliser pour l'évaluation des métriques générales")
-    parser.add_argument("--sasfit_percentage", type=float, default=0.1,
-                        help="Pourcentage du dataset à utiliser pour SASFit")
+    """Parse les arguments de ligne de commande."""
+    parser = argparse.ArgumentParser(description="Calcul optimisé des métriques de validation")
+
+    parser.add_argument("-c", "--checkpoint", required=True, help="Chemin checkpoint modèle")
+    parser.add_argument("-d", "--data_path", required=True, help="Chemin fichier HDF5")
+    parser.add_argument("-o", "--outputdir", required=True, help="Répertoire de sortie")
+    parser.add_argument("--signal_length", type=int, help="Longueur de signal forcée", default=300)
+    parser.add_argument("-cd", "--conversion_dict", help="Fichier conversion métadonnées")
+
+    parser.add_argument("--batch_size", type=int, default=32, help="Taille batch")
+    parser.add_argument("--eval_percentage", type=float, default=0.1,
+                       help="% dataset pour métriques reconstruction")
+    parser.add_argument("--sasfit_percentage", type=float, default=0.0005,
+                       help="% dataset pour SASFit")
+
+    parser.add_argument("--qmin_fit", type=float, default=0.001, help="Q min fitting")
+    parser.add_argument("--qmax_fit", type=float, default=0.3, help="Q max fitting")
     parser.add_argument("--factor_scale_to_conc", type=float, default=20878,
-                        help="Facteur de conversion échelle vers concentration")
-    parser.add_argument("--n_processes", type=int, default=None,
-                        help="Nombre de processus pour SASFit (défaut: CPU-1)")
-    parser.add_argument("--random_state", type=int, default=42,
-                        help="État aléatoire pour la reproductibilité")
+                       help="Facteur conversion échelle->concentration")
+
+    parser.add_argument("--n_processes", type=int, help="Nombre processus SASFit")
+    parser.add_argument("--random_state", type=int, default=42, help="Graine aléatoire")
 
     return parser.parse_args()
 
 
-if __name__ == "__main__":
+def main():
+    """Point d'entrée principal."""
     args = parse_args()
 
-    # Charger les hyperparamètres depuis le checkpoint
-    ckpt = args.checkpoint
-    hparams = torch.load(ckpt, map_location='cpu')['hyper_parameters']['config']
-    model_type = hparams['model']['type']
-
-    print(f"Calcul des métriques de validation pour le modèle {model_type}")
+    print("🔬 Calculateur de Métriques de Validation v2.0")
     print(f"Checkpoint: {args.checkpoint}")
     print(f"Dataset: {args.data_path}")
-    print(f"Pourcentage évaluation: {args.eval_percentage*100:.1f}%")
-    print(f"Pourcentage SASFit: {args.sasfit_percentage*100:.1f}%")
-    print(f"Random state: {args.random_state}")
+    print(f"Output: {args.outputdir}")
 
-    # Créer l'inférenceur de métriques
-    runner = MetricsInferencer(
-        output_dir=args.outputdir,
+    calculator = ValidationMetricsCalculator(
         checkpoint_path=args.checkpoint,
-        hparams=hparams,
         data_path=args.data_path,
+        output_dir=args.outputdir,
         conversion_dict_path=args.conversion_dict,
         batch_size=args.batch_size,
-        qmin_fit=args.qmin_fit,
-        qmax_fit=args.qmax_fit,
         eval_percentage=args.eval_percentage,
         sasfit_percentage=args.sasfit_percentage,
+        qmin_fit=args.qmin_fit,
+        qmax_fit=args.qmax_fit,
         factor_scale_to_conc=args.factor_scale_to_conc,
         n_processes=args.n_processes,
-        random_state=args.random_state
+        random_state=args.random_state,
+        signal_length=args.signal_length
     )
 
-    # Exécuter le calcul des métriques
-    runner.infer()
-    print(f"\nMétriques de validation sauvegardées dans {args.outputdir}")
+    calculator.run_validation()
+
+
+if __name__ == "__main__":
+    main()
