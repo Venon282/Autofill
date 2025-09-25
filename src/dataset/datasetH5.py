@@ -167,7 +167,7 @@ class HDF5Dataset(Dataset):
 
         # return data_q, data_y, metadata, self.csv_index[original_idx]
         return {"data_q": data_q.unsqueeze(0), "data_y": data_y.unsqueeze(0),
-                "metadata": metadata, "csv_index": self.csv_index[original_idx], "len": self.len[original_idx]}
+                "metadata": metadata, "csv_index": self.csv_index[original_idx], "len": self.len[original_idx], "untransformed_data_y": self.data_y[original_idx], "untransformed_data_q": self.data_q[original_idx]}
 
     def close(self):
         """Close the HDF5 file"""
