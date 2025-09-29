@@ -16,8 +16,8 @@ transforms_data:
       pad_size: 1000
 
 training:
-  array_train_indices: /projects/pnria/caroline/AUTOFILL/data_sept_25/train_(pair_saxs_les).npy
-  array_val_indices: /projects/pnria/caroline/AUTOFILL/data_sept_25/val_(pair_saxs_les).npy
+  array_train_indices: /projects/pnria/DATA/AUTOFILL/train_(pair_saxs_les).npy
+  array_val_indices: /projects/pnria/DATA/AUTOFILL/val_(pair_saxs_les).npy
   weighted_loss : False
   weighted_loss_limit_index: 
   T_max: 100

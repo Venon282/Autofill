@@ -1,7 +1,9 @@
 import lightning.pytorch as pl
 import torch
 import torch.nn.functional as F
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR
+
+import math 
 
 from src.model.pairvae.loss import BarlowTwinsLoss
 from src.model.pairvae.pairvae import PairVAE
@@ -100,21 +102,34 @@ class PlPairVAE(pl.LightningModule):
                  sync_dist=True)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.config["training"]["max_lr"])
+        optimizer = torch.optim.AdamW(
+            self.model.parameters(),
+            lr=self.config["training"]["max_lr"]
+        )
 
-        scheduler = ReduceLROnPlateau(
-            optimizer,
-            mode="min",
-            threshold=1e-3,
-            factor=0.1,
-            patience=5,
-            min_lr=1e-10)
+        # --- Warm-up settings ---
+        warmup_epochs = self.config["training"].get("warmup_epochs", 5)
+        max_epochs = self.config["training"]["num_epochs"]
 
-        return {"optimizer": optimizer,
-                "lr_scheduler": {
-                    "scheduler": scheduler,
-                    "monitor": "val_loss",
-                    "interval": "epoch"}}
+        def lr_lambda(current_epoch):
+            if current_epoch < warmup_epochs:
+                # Phase de warm-up linéaire
+                return float(current_epoch + 1) / float(warmup_epochs)
+            else:
+                # Phase de scheduler classique (cosine ici)
+                progress = (current_epoch - warmup_epochs) / float(max_epochs - warmup_epochs)
+                return 0.5 * (1.0 + math.cos(math.pi * progress))  # Cosine annealing
+
+        scheduler = LambdaLR(optimizer, lr_lambda=lr_lambda)
+
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "interval": "epoch",
+                "frequency": 1
+            }
+        }
 
     def les_to_saxs(self, batch):
         

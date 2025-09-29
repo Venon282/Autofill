@@ -131,21 +131,10 @@ def sasfit_single_sample(args: Tuple) -> Optional[Tuple[float, float, float, flo
 
     diam_err = abs(pred_diam_nm - true_diam)
     length_err = abs(pred_length_nm - true_length)
-    conc_err = abs(converted_scale - true_conc)
+    conc_err = abs(converted_scale - true_conc)/true_conc
+    conc_err2 = 2 * np.abs(true_conc - converted_scale) / (np.abs(true_conc) + np.abs(converted_scale) + 1e-15)
 
-    # Evaluate best fit on full q and on fit q 
-    best = res.params.valuesdict()
-    I_fit  = calc_fit(scale=best["scale"], background=best["background"],
-                    radius=best["radius"], length=best["length"],
-                    sld=sld_particle, sld_solvent=sld_solvent,
-                    radius_pd=0.0, length_pd=0.0)
-
-    mae_pct = mean_absolute_error(I_fit, i_fit)
-
-    return (mae_pct, diam_err, length_err, conc_err, pred_diam_nm, pred_length_nm, converted_scale, true_diam, true_length, true_conc)
-
-
-
+    return (diam_err, length_err, conc_err, pred_diam_nm, pred_length_nm, converted_scale, true_diam, true_length, true_conc)
 
 class ValidationMetricsCalculator:
     """Calculateur optimisé des métriques de validation."""
@@ -206,8 +195,6 @@ class ValidationMetricsCalculator:
                 conversion_dict = json.load(f)
         else:
             conversion_dict = self.config.get("conversion_dict")
-
-        print(self.config["transforms_data"]["y"])
 
         self.dataset = HDF5Dataset(
             str(self.data_path),
@@ -391,10 +378,6 @@ class ValidationMetricsCalculator:
                 true_values = batch["data_y"].detach().cpu().squeeze(1)
                 true_inverted, q_true_inverted = self.invert_transforms(true_values, q_batch)
 
-                print(mean_absolute_error(batch["untransformed_data_y"], true_inverted))
-
-                true_inverted = batch["untransformed_data_y"]
-
                 meta = batch.get("metadata", {})
                 if not ('diameter_nm' in meta and 'concentration_original' in meta):
                     continue
@@ -449,14 +432,13 @@ class ValidationMetricsCalculator:
         results_dict = {}
 
         if pred_successful:
-            pred_mae_cb_fit = [r[0] for r in pred_successful]
-            pred_diam_errors = [r[1] for r in pred_successful]
-            pred_length_errors = [r[2] for r in pred_successful]
-            pred_conc_errors = [r[3] for r in pred_successful]
+            pred_diam_errors = [r[0] for r in pred_successful]
+            pred_length_errors = [r[1] for r in pred_successful]
+            pred_conc_errors = [r[2] for r in pred_successful]
 
             # Résultats détaillés prédictions
             pred_detailed = []
-            for i, (mae_cb, diam_err, length_err, conc_err, pred_diam, pred_length, pred_conc, true_diam, true_length, true_conc) in enumerate(pred_successful):
+            for i, (diam_err, length_err, conc_err, pred_diam, pred_length, pred_conc, true_diam, true_length, true_conc) in enumerate(pred_successful):
                 pred_detailed.append({
                     'sample_index': i,
                     'type': 'prediction',
@@ -466,7 +448,6 @@ class ValidationMetricsCalculator:
                     'pred_diameter_nm': pred_diam,
                     'pred_length_nm': pred_length,
                     'pred_concentration': pred_conc,
-                    'mae_cb': mae_cb,
                     'diameter_abs_error': diam_err,
                     'length_abs_error': length_err,
                     'concentration_abs_error': conc_err
@@ -474,7 +455,6 @@ class ValidationMetricsCalculator:
 
             results_dict.update({
                 'sasfit_pred_samples': len(pred_successful),
-                'mae_cb_pred': float(np.mean(pred_mae_cb_fit)),
                 'mae_diameter_nm_pred': float(np.mean(pred_diam_errors)),
                 'mae_length_nm_pred': float(np.mean(pred_length_errors)),
                 'mae_concentration_pred': float(np.mean(pred_conc_errors)),
@@ -486,20 +466,21 @@ class ValidationMetricsCalculator:
                 'rmse_concentration_pred': float(np.sqrt(np.mean([e**2 for e in pred_conc_errors])))
             })
 
-            print(f"  📊 Prédictions - MAE entre courbes fittées: {results_dict['mae_cb_pred']:.2f}")
             print(f"  📊 Prédictions - Diamètre MAE: {results_dict['mae_diameter_nm_pred']:.2f} nm")
             print(f"  📊 Prédictions - Length MAE: {results_dict['mae_length_nm_pred']:.2f} nm")
             print(f"  📊 Prédictions - Concentration MAE: {results_dict['mae_concentration_pred']:.2e}")
+            print(f"  📊 Prédictions - Concentration err MEDIAN: {float(np.median(pred_conc_errors)):.2e}")
+            print(f"  📊 Prédictions - Concentration err MIN: {float(np.min(pred_conc_errors)):.2e}")
+            print(f"  📊 Prédictions - Concentration err MAX: {float(np.max(pred_conc_errors)):.2e}")
 
         if true_successful:
-            true_mae_cb_fit = [r[0] for r in true_successful]
-            true_diam_errors = [r[1] for r in true_successful]
-            true_length_errors = [r[2] for r in true_successful]
-            true_conc_errors = [r[3] for r in true_successful]
+            true_diam_errors = [r[0] for r in true_successful]
+            true_length_errors = [r[1] for r in true_successful]
+            true_conc_errors = [r[2] for r in true_successful]
 
             # Résultats détaillés vérité terrain
             true_detailed = []
-            for i, (mae_cb, diam_err, length_err, conc_err, pred_diam, pred_length, pred_conc, true_diam, true_length, true_conc) in enumerate(true_successful):
+            for i, (diam_err, length_err, conc_err, pred_diam, pred_length, pred_conc, true_diam, true_length, true_conc) in enumerate(true_successful):
                 true_detailed.append({
                     'sample_index': i,
                     'type': 'prediction',
@@ -509,7 +490,6 @@ class ValidationMetricsCalculator:
                     'pred_diameter_nm': pred_diam,
                     'pred_length_nm': pred_length,
                     'pred_concentration': pred_conc,
-                    'mae_cb': mae_cb,
                     'diameter_abs_error': diam_err,
                     'length_abs_error': length_err,
                     'concentration_abs_error': conc_err
@@ -517,7 +497,6 @@ class ValidationMetricsCalculator:
 
             results_dict.update({
                 'sasfit_true_samples': len(true_successful),
-                'mae_cb_true': float(np.mean(true_mae_cb_fit)),
                 'mae_diameter_nm_true': float(np.mean(true_diam_errors)),
                 'mae_length_nm_true': float(np.mean(true_length_errors)),
                 'mae_concentration_true': float(np.mean(true_conc_errors)),
@@ -529,28 +508,25 @@ class ValidationMetricsCalculator:
                 'rmse_concentration_true': float(np.sqrt(np.mean([e**2 for e in true_conc_errors])))
             })
 
-            print(f"  ✅ Vérité terrain - MAE entre courbes fittées: {results_dict['mae_cb_true']:.2f}")
             print(f"  ✅ Vérité terrain - Diamètre MAE: {results_dict['mae_diameter_nm_true']:.2f} nm")
             print(f"  ✅ Vérité terrain - Length MAE: {results_dict['mae_length_nm_true']:.2f} nm")
             print(f"  ✅ Vérité terrain - Concentration MAE: {results_dict['mae_concentration_true']:.2e}")
+            print(f"  ✅ Vérité terrain - Concentration err MEDIAN: {float(np.median(true_conc_errors)):.2e}")
             print(f"  ✅ Vérité terrain - Concentration err MIN: {float(np.min(true_conc_errors)):.2e}")
             print(f"  ✅ Vérité terrain - Concentration err MAX: {float(np.max(true_conc_errors)):.2e}")
 
         # Calcul du ratio de performance (prédiction / vérité terrain)
         if pred_successful and true_successful:
-            mae_cb_fitted_ratio = results_dict['mae_cb_pred'] / results_dict['mae_cb_true']
             diam_ratio = results_dict['mae_diameter_nm_pred'] / results_dict['mae_diameter_nm_true']
             length_ratio = results_dict['mae_length_nm_pred'] / results_dict['mae_length_nm_true']
             conc_ratio = results_dict['mae_concentration_pred'] / results_dict['mae_concentration_true']
 
             results_dict.update({
-                'sasfit_mae_cb_fitted_ratio': float(mae_cb_fitted_ratio),
                 'sasfit_diameter_mae_ratio': float(diam_ratio),
                 'sasfit_length_mae_ratio': float(length_ratio),
                 'sasfit_concentration_mae_ratio': float(conc_ratio)
             })
 
-            print(f"  📈 Ratio performance - MAE courbes fitted: {mae_cb_fitted_ratio:.2f}x (1.0=parfait)")
             print(f"  📈 Ratio performance - Diamètre: {diam_ratio:.2f}x (1.0=parfait)")
             print(f"  📈 Ratio performance - Length: {length_ratio:.2f}x (1.0=parfait)")
             print(f"  📈 Ratio performance - Concentration: {conc_ratio:.2f}x (1.0=parfait)")
@@ -648,11 +624,11 @@ def parse_args():
     parser.add_argument("--batch_size", type=int, default=32, help="Taille batch")
     parser.add_argument("--eval_percentage", type=float, default=0.1,
                        help="% dataset pour métriques reconstruction")
-    parser.add_argument("--sasfit_percentage", type=float, default=0.005,
+    parser.add_argument("--sasfit_percentage", type=float, default=0.5,
                        help="% dataset pour SASFit")
 
     parser.add_argument("--qmin_fit", type=float, default=0.001, help="Q min fitting")
-    parser.add_argument("--qmax_fit", type=float, default=0.3, help="Q max fitting")
+    parser.add_argument("--qmax_fit", type=float, default=0.5, help="Q max fitting")
     parser.add_argument("--factor_scale_to_conc", type=float, default=20878,
                        help="Facteur conversion échelle->concentration")
 

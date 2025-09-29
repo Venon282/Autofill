@@ -43,6 +43,7 @@ class BarlowTwinsLoss(nn.Module):
         safe_std_saxs[safe_std_saxs == 0] = 1.0
         safe_std_les = std_les.clone()
         safe_std_les[safe_std_les == 0] = 1.0
+        
         z_saxs_norm = (z_saxs - torch.mean(z_saxs, dim=0)) / safe_std_saxs
         zles_norm = (zles - torch.mean(zles, dim=0)) / safe_std_les
 
