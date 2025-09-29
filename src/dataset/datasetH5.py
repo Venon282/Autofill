@@ -19,11 +19,13 @@ class HDF5Dataset(Dataset):
                  transformer_q=Pipeline(), transformer_y=Pipeline()):
         self.hdf5_file = hdf5_file
         self.hdf = h5py.File(hdf5_file, 'r', swmr=True)
-
-        if "data_q" in self.hdf:
-            self.data_q = self.hdf["data_q"]
-        else:
-            self.data_q = self.hdf["data_wavelength"]    
+        try:
+            if "data_q" in self.hdf:    
+                self.data_q = self.hdf["data_q"]
+            else:
+                self.data_q = self.hdf["data_wavelength"]    
+        except Exception as e:
+            raise ValueError(f"Error loading 'data_q' or 'data_wavelength' from HDF5 file: {e}")
 
         #indices = np.where(self.data_q[0] > 0.3)[0]
         #print(indices)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Script optimisé pour calculer les métriques de validation sur un dataset H5.
-Refactorisé pour être plus maintenable et sans dépendance à metrics_callback.
+Optimized script to compute validation metrics on H5 dataset.
+Refactored for better maintainability without metrics_callback dependency.
 """
 
 import argparse
@@ -23,12 +23,13 @@ from joblib import Parallel, delayed
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.dataset.datasetH5 import HDF5Dataset
+from src.dataset.transformations import Pipeline
 from src.model.pairvae.pl_pairvae import PlPairVAE
 from src.model.vae.pl_vae import PlVAE
 
 
 def move_to_device(batch: Any, device: torch.device) -> Any:
-    """Déplace récursivement les tenseurs vers le device spécifié."""
+    """Recursively move tensors to specified device."""
     if isinstance(batch, torch.Tensor):
         return batch.to(device)
     elif isinstance(batch, dict):
@@ -40,36 +41,42 @@ def move_to_device(batch: Any, device: torch.device) -> Any:
 
 def sasfit_single_sample(args: Tuple) -> Optional[Tuple[float, float, float, float, float, float]]:
     """
-    Fit un modèle cylindrique sur un échantillon SAXS pour récupérer diamètre et concentration.
+    Fit a cylindrical model on a SAXS sample to extract diameter and concentration.
 
     Args:
-        args: Tuple contenant (sample_data, qmin_fit, qmax_fit, factor_scale_to_conc)
+        args: Tuple containing (sample_data, qmin_fit, qmax_fit, factor_scale_to_conc, use_first_n_points)
 
     Returns:
-        Tuple (diam_err, conc_err, pred_diam_nm, pred_conc, true_diam, true_conc) ou None si échec
-"""
+        Tuple (diam_err, length_err, conc_err, pred_diam_nm, pred_length_nm, pred_conc, true_diam, true_length, true_conc) or None if failed
+    """
     from lmfit import Parameters, minimize
     from sasmodels.core import load_model
     from sasmodels.data import empty_data1D
     from sasmodels.direct_model import DirectModel
 
-    sample_data, qmin_fit, qmax_fit, factor = args
+    sample_data, qmin_fit, qmax_fit, factor, use_first_n_points = args
     y_np, q_np, true_diam, true_length, true_conc = sample_data
 
-    # Masque pour la plage de q
-    mask = (q_np >= qmin_fit) & (q_np <= qmax_fit)
-    if not np.any(mask):
-        return None
+    # Select data points according to strategy
+    if use_first_n_points:
+        # For les_to_saxs: use first N points instead of qmin/qmax filtering
+        n_points = min(use_first_n_points, len(q_np), len(y_np))
+        q_fit = q_np[:n_points]
+        i_fit = y_np[:n_points]
+    else:
+        # For saxs_to_saxs: use qmin/qmax mask
+        mask = (q_np >= qmin_fit) & (q_np <= qmax_fit)
+        if not np.any(mask):
+            raise ValueError(f"No data points in the specified q range. {qmin_fit} to {qmax_fit}, available q range: {q_np.min()} to {q_np.max()}")
+        q_fit = q_np[mask]
+        i_fit = y_np[mask]
 
-    q_fit = q_np[mask]
-    i_fit = y_np[mask]
-
-    # Modèle cylindrique et paramètres physiques
-    model     = load_model("cylinder")
-    data_fit  = empty_data1D(q_fit)
-    calc_fit  = DirectModel(data_fit,  model)
+    # Cylindrical model and physical parameters
+    model = load_model("cylinder")
+    data_fit = empty_data1D(q_fit)
+    calc_fit = DirectModel(data_fit, model)
     sld_particle = 7.76211e11 * 1e-16  # Ag
-    sld_solvent  = 9.39845e10 * 1e-16  # H2O
+    sld_solvent = 9.39845e10 * 1e-16   # H2O
 
     def residual_log(params):
         p = params.valuesdict()
@@ -80,48 +87,42 @@ def sasfit_single_sample(args: Tuple) -> Optional[Tuple[float, float, float, flo
         eps = 1e-30
         return np.log10(np.clip(i_fit, eps, None)) - np.log10(np.clip(I, eps, None))
 
-    # Espace de paramètres
+    # Parameter space
     params = Parameters()
-    # params.add("scale", value=1e14/20878, min=1e6/20878, max=1e20/20878)
-    params.add("scale", value=1e14, min=1e6, max=1e20)
+    params.add("scale", value=1e14, min=1e2, max=1e30)
     params.add("radius", value=250.0, min=90.0, max=510.0)
-    params.add("length", value=100.0, min=40.0,  max=160.0)
-
-    # Pas de background dans notre cas
-    bg_max = 0
-    params.add("background", value=0,vary=False)
+    params.add("length", value=100.0, min=40.0, max=160.0)
+    params.add("background", value=0, vary=False)
 
     # Deterministic DE
     res = minimize(
         residual_log, params,
         method="differential_evolution",
         minimizer_kws=dict(
-            # seed=42,          # Seed
-            popsize=1000,        # smaller = faster
-            maxiter=300,       # moderate
+            popsize=1000,
+            maxiter=300,
             polish=True,
             tol=1e-6,
             updating="deferred",
-            workers=1          # full determinism
+            workers=1
         )
     )
-    #Deterministic local polish
+    # Deterministic local polish
     res = minimize(
         residual_log, res.params,
         method="least_squares",
-        loss="linear",    # fastest;"soft_l1"
+        loss="linear",
         f_scale=0.1,
         xtol=1e-8, ftol=1e-8, gtol=1e-8,
         max_nfev=80000
     )
 
-    # Extraction des résultats
-    #Récupération des données du fits
+    # Extract results
     fitted_scale = res.params["scale"].value
     radius_A = res.params["radius"].value
-    length_A =res.params["length"].value
+    length_A = res.params["length"].value
 
-    converted_scale = fitted_scale * factor # concentration_original
+    converted_scale = fitted_scale * factor
     radius_nm = np.rint(radius_A/10)
     pred_diam_nm = radius_nm*2
     pred_length_nm = np.rint(length_A/10)
@@ -129,12 +130,11 @@ def sasfit_single_sample(args: Tuple) -> Optional[Tuple[float, float, float, flo
     diam_err = abs(pred_diam_nm - true_diam)
     length_err = abs(pred_length_nm - true_length)
     conc_err = abs(converted_scale - true_conc)/true_conc
-    conc_err2 = 2 * np.abs(true_conc - converted_scale) / (np.abs(true_conc) + np.abs(converted_scale) + 1e-15)
 
     return (diam_err, length_err, conc_err, pred_diam_nm, pred_length_nm, converted_scale, true_diam, true_length, true_conc)
 
 class ValidationMetricsCalculator:
-    """Calculateur optimisé des métriques de validation."""
+    """Optimized validation metrics calculator."""
 
     def __init__(self, checkpoint_path: str, data_path: str, output_dir: str,
                  conversion_dict_path: Optional[str] = None, batch_size: int = 32,
@@ -161,55 +161,91 @@ class ValidationMetricsCalculator:
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        # Charger config et modèle
         self._load_model_and_config()
         self._setup_dataset(conversion_dict_path)
 
-        print(f"✓ Modèle chargé: {self.model_type}")
-        print(f"✓ Dataset: {len(self.dataset)} échantillons")
+        print(f"✓ Model loaded: {self.model_type}")
+        print(f"✓ Dataset: {len(self.dataset)} samples")
         print(f"✓ Device: {self.device}")
         if self.signal_length:
-            print(f"✓ Taille signal forcée: {self.signal_length} points")
+            print(f"✓ Forced signal length: {self.signal_length} points")
 
     def _load_model_and_config(self):
-        """Charge le modèle et la configuration depuis le checkpoint."""
+        """Load model and configuration from checkpoint."""
         checkpoint = torch.load(self.checkpoint_path, map_location='cpu')
         self.config = checkpoint['hyper_parameters']['config']
         self.model_type = self.config['model']['type'].lower()
-        if self.model_type.lower() not in ['vae', 'pair_vae']:
-            raise ValueError(f"Model type {self.model_type} is not supported for inference.")
-        if elselff.model_type.lower() == 'pair_vae' and self.mode is None:
-            raise ValueError("Please provide the mode for the PairVAE model.")
+        if self.model_type not in ['vae', 'pair_vae']:
+            raise ValueError(f"Model type {self.model_type} is not supported for validation.")
+        if self.model_type == 'pair_vae' and self.mode is None:
+            raise ValueError("Please provide --mode for the PairVAE model.")
+        if self.model_type == 'vae' and self.mode is not None:
+            raise ValueError(f"Can't use --mode with model type vae")
         if self.model_type == 'vae':
             self.model = PlVAE.load_from_checkpoint(self.checkpoint_path)
         elif self.model_type == 'pair_vae':
             self.model = PlPairVAE.load_from_checkpoint(self.checkpoint_path)
         else:
-            raise ValueError(f"Type de modèle non supporté: {self.model_type}")
+            raise ValueError(f"Unsupported model type: {self.model_type}")
 
         self.model.to(self.device).eval()
 
     def _setup_dataset(self, conversion_dict_path: Optional[str]):
-        """Configure le dataset H5 avec les transformations."""
+        """Configure H5 dataset with transformations for VAE/PairVAE."""
         if conversion_dict_path:
             with open(conversion_dict_path, 'r') as f:
                 conversion_dict = json.load(f)
         else:
             conversion_dict = self.config.get("conversion_dict")
 
-        self.dataset = HDF5Dataset(
-            str(self.data_path),
-            sample_frac=1.0,
-            transformer_q=self.config["transforms_data"]["q"],
-            transformer_y=self.config["transforms_data"]["y"],
-            metadata_filters=self.config["dataset"]["metadata_filters"],
-            conversion_dict=conversion_dict,
-            requested_metadata=['diameter_nm', 'length_nm', 'concentration_original', 'concentration_scaled']
-        )
-        self.invert_transforms = self.dataset.invert_transforms_func()
+        if self.model_type == 'vae':
+            # VAE: SAXS dataset with SAXS transformations
+            self.dataset = HDF5Dataset(
+                str(self.data_path),
+                sample_frac=1.0,
+                transformer_q=self.config["transforms_data"]["q"],
+                transformer_y=self.config["transforms_data"]["y"],
+                metadata_filters=self.config["dataset"]["metadata_filters"],
+                conversion_dict=conversion_dict,
+                requested_metadata=['length_nm', 'diameter_nm', 'concentration_original']
+            )
+            self.invert_transforms = self.dataset.invert_transforms_func()
+        else:
+            transform_config = self.config.get('transforms_data', {})
+            
+            if self.mode in ['les_to_saxs']:
+                self.dataset = HDF5Dataset(
+                    str(self.data_path),
+                    sample_frac=1.0,
+                    transformer_q=Pipeline(transform_config["q_les"]),
+                    transformer_y=Pipeline(transform_config["y_les"]),
+                    metadata_filters=self.config["dataset"]["metadata_filters"],
+                    conversion_dict=conversion_dict,
+                    requested_metadata=['diameter_nm', 'length_nm', 'concentration'] 
+                )
+                    
+            else: 
+                self.dataset = HDF5Dataset(
+                    str(self.data_path),
+                    sample_frac=1.0,
+                    transformer_q=Pipeline(transform_config["q_saxs"]),
+                    transformer_y=Pipeline(transform_config["y_saxs"]),
+                    metadata_filters=self.config["dataset"]["metadata_filters"],
+                    conversion_dict=conversion_dict,
+                    requested_metadata=['diameter_nm', 'length_nm', 'concentration_original']
+                )
+            output_transformer_q = Pipeline(transform_config["q_saxs"])
+            output_transformer_y = Pipeline(transform_config["y_saxs"])
+            
+            # Inversion function for PairVAE
+            def invert(y, q):
+                y = output_transformer_y.invert(y)
+                q = output_transformer_q.invert(q)
+                return y, q
+            self.invert_transforms = invert
 
     def _extract_reconstruction(self, outputs: Any) -> Optional[torch.Tensor]:
-        """Extrait la reconstruction des outputs du modèle."""
+        """Extract reconstruction from model outputs."""
         if isinstance(outputs, dict):
             recon = outputs.get('recon')
             if recon is None:
@@ -222,12 +258,8 @@ class ValidationMetricsCalculator:
         return outputs
 
     def compute_reconstruction_metrics(self) -> Dict[str, Any]:
-        """Calcule les métriques de reconstruction (MAE, MSE, R², RMSE)."""
-        print(f"\n📊 Calcul métriques reconstruction ({self.eval_percentage*100:.1f}% dataset)")
-
-        # Échantillonnage
-        # np.random.seed(self.random_state)
-        # torch.manual_seed(self.random_state)
+        """Compute reconstruction metrics (MAE, MSE, R², RMSE)."""
+        print(f"\n📊 Computing reconstruction metrics ({self.eval_percentage*100:.1f}% dataset)")
 
         total_samples = len(self.dataset)
         n_samples = int(total_samples * self.eval_percentage)
@@ -240,27 +272,41 @@ class ValidationMetricsCalculator:
         detailed_results = []
 
         with torch.no_grad():
+            # For PairVAE, only compute reconstruction metrics if input==output
+            if self.model_type == 'pair_vae' and self.mode not in ('les_to_les', 'saxs_to_saxs'):
+                print("Reconstruction metrics skipped for cross-domain PairVAE mode.")
+                return {'samples_evaluated': 0}
+
             for batch in tqdm(loader, desc="Computing reconstruction metrics"):
                 batch = move_to_device(batch, self.device)
 
                 # Prédiction
-                outputs = self.model(batch)
-                recon = self._extract_reconstruction(outputs)
+                if self.model_type == 'vae':
+                    outputs = self.model(batch)
+                    recon = self._extract_reconstruction(outputs)
+                else:
+                    # PairVAE: même domaine entrée/sortie
+                    if self.mode == 'les_to_les':
+                        recon, _ = self.model.les_to_les(batch)
+                    elif self.mode == 'saxs_to_saxs':
+                        recon, _ = self.model.saxs_to_saxs(batch)
+                    else:
+                        recon = None
+                        
                 if recon is None:
+                    print("WARNING: No reconstruction available from the model outputs.")
                     continue
 
-                # Préparation des données
                 true_values = batch["data_y"].squeeze(1)
-
-                if recon.ndim > true_values.ndim:
+                if recon.ndim == 3:
                     recon = recon.squeeze(1)
-
-                # Inversion des transformations vers l'espace physique
+                if true_values.ndim == 3:
+                    true_values = q_pred.squeeze(1)
+                
                 true_cpu = true_values.detach().cpu()
                 recon_cpu = recon.detach().cpu()
                 true_np = true_cpu.numpy()
                 recon_np = recon_cpu.numpy()
-
                 # Métadonnées
                 metadata_batch = batch.get("metadata", {})
                 lengths = batch.get("len")
@@ -283,7 +329,6 @@ class ValidationMetricsCalculator:
                         true_vals = true_np[i].flatten()
                         pred_vals = recon_np[i].flatten()
 
-                    # Calcul métriques
                     mae = mean_absolute_error(true_vals, pred_vals)
                     mse = mean_squared_error(true_vals, pred_vals)
                     r2 = r2_score(true_vals, pred_vals)
@@ -328,7 +373,7 @@ class ValidationMetricsCalculator:
                 df = pd.DataFrame(detailed_results)
                 csv_path = self.output_dir / "reconstruction_metrics_detailed.csv"
                 df.to_csv(csv_path, index=False)
-                print(f"✓ Détails sauvés: {csv_path}")
+                print(f"✓ Details saved: {csv_path}")
 
             print(f"  MAE: {results['global_mae']:.6f}")
             print(f"  R²: {results['global_r2']:.6f}")
@@ -339,10 +384,12 @@ class ValidationMetricsCalculator:
 
     def compute_sasfit_metrics(self) -> Dict[str, Any]:
         """Calcule les métriques SASFit (diamètre et concentration via fitting physique)."""
-        print(f"\n🔬 Calcul métriques SASFit ({self.sasfit_percentage*100:.2f}% dataset)")
+        # PairVAE: can only measure SASFit if output is SAXS
+        if self.model_type == 'pair_vae' and self.mode not in ('les_to_saxs', 'saxs_to_saxs'):
+            raise ValueError("SASFit metrics can only be computed for PairVAE in 'les_to_saxs' or 'saxs_to_saxs' mode.")
 
-        # Échantillonnage
-        # np.random.seed(self.random_state)
+        print(f"\n🔬 Computing SASFit metrics ({self.sasfit_percentage*100:.2f}% dataset)")
+
         total_samples = len(self.dataset)
         n_samples = int(total_samples * self.sasfit_percentage)
 
@@ -353,80 +400,106 @@ class ValidationMetricsCalculator:
         subset = Subset(self.dataset, indices)
         loader = DataLoader(subset, batch_size=self.batch_size, shuffle=False)
 
-        # Collecte des échantillons pour prédictions ET vérité terrain
-        pred_samples = []  # Échantillons prédits
-        true_samples = []  # Échantillons de vérité terrain
+        pred_samples = [] 
+        true_samples = []
+
+        use_first_n_points = None
+        if self.model_type == 'pair_vae' and self.mode == 'les_to_saxs':
+            use_first_n_points = 300  
+            print(f"  Mode les_to_saxs: using first {use_first_n_points} points instead of qmin/qmax filtering")
+        else:
+            print(f"  Mode {self.mode if self.model_type == 'pair_vae' else 'VAE'}: using qmin={self.qmin_fit}, qmax={self.qmax_fit}")
 
         with torch.no_grad():
             for batch in tqdm(loader, desc="Collecting SASFit samples"):
                 batch = move_to_device(batch, self.device)
 
-                outputs = self.model(batch)
-                recon = self._extract_reconstruction(outputs)
-                if recon is None:
-                    continue
+                if self.model_type == 'vae':
+                    outputs = self.model(batch)
+                    recon = self._extract_reconstruction(outputs)
+                    if recon is None:
+                        continue
+                    q_pred = batch["data_q"].detach().cpu()
+                    # Vérité terrain toujours disponible pour VAE
+                    true_values = batch["data_y"].detach().cpu().squeeze(1)
+                else:
+                    # PairVAE: sortie SAXS requise
+                    if self.mode == 'saxs_to_saxs':
+                        recon, q_pred = self.model.saxs_to_saxs(batch)
+                        true_values = batch["data_y"].detach().cpu().squeeze(1)
+                    else:  # les_to_saxs
+                        recon, q_pred = self.model.les_to_saxs(batch)
+                        true_values = None
 
                 # Données prédites
-                q_batch = batch["data_q"].detach().cpu()
                 if recon.ndim == 3:
                     recon = recon.squeeze(1)
-                if q_batch.ndim == 3:
-                    q_batch = q_batch.squeeze(1)
+                if q_pred.ndim == 3:
+                    q_pred = q_pred.squeeze(1)
 
-                recon_inverted, q_inverted = self.invert_transforms(recon.cpu(), q_batch)
+                recon_inverted, q_inverted = self.invert_transforms(recon.detach().cpu(), q_pred.detach().cpu())
 
-                #temoin
-                true_values = batch["data_y"].detach().cpu().squeeze(1)
-                true_inverted, q_true_inverted = self.invert_transforms(true_values, q_batch)
+                # Vérité terrain 
+                if true_values is not None:
+                    true_inverted, q_true_inverted = self.invert_transforms(true_values, q_pred.detach().cpu())
+                else:
+                    true_inverted, q_true_inverted = None, None
 
                 meta = batch.get("metadata", {})
-                if not ('diameter_nm' in meta and 'concentration_original' in meta):
-                    continue
+                
+                diameter_key = 'diameter_nm'
+                length_key = 'length_nm'
+                if self.mode in ['les_to_saxs']:
+                    concentration_key = 'concentration'
+                else:
+                    concentration_key = 'concentration_original'
+                
+                if not (diameter_key in meta and concentration_key in meta):
+                    raise ValueError(f"Need '{diameter_key}' and '{concentration_key}' in metadata : {meta} for SASFit metrics.")
 
-                diam_true = meta['diameter_nm'].detach().cpu().numpy()
-                length_true = meta['length_nm'].detach().cpu().numpy()
-                conc_true = meta['concentration_original'].detach().cpu().numpy()
+                diam_true = meta[diameter_key].detach().cpu().numpy()
+                length_true = meta[length_key].detach().cpu().numpy()
+                conc_true = meta[concentration_key].detach().cpu().numpy()
                 lengths = batch.get("len")
 
-                # Collecte par échantillon
                 for i in range(recon_inverted.shape[0]):
-                    # Données prédites
+                    # Predicted data
                     y_pred = recon_inverted[i].numpy()
                     q_pred = q_inverted[i].numpy()
 
-                    # Données vraies (témoin)
-                    y_true = true_inverted[i].numpy()
-                    q_true = q_true_inverted[i].numpy()
+                    # True data (control)
+                    if true_inverted is not None:
+                        y_true = true_inverted[i].numpy()
+                        q_true = q_true_inverted[i].numpy()
 
                     t_d = float(diam_true[i]) if np.ndim(diam_true) > 0 else float(diam_true)
                     t_l = float(length_true[i]) if np.ndim(length_true) > 0 else float(length_true)
                     t_c = float(conc_true[i]) if np.ndim(conc_true) > 0 else float(conc_true)
 
                     pred_samples.append((y_pred, q_pred, t_d, t_l, t_c))
-                    true_samples.append((y_true, q_true, t_d, t_l, t_c))
+                    if true_inverted is not None:
+                        true_samples.append((y_true, q_true, t_d, t_l, t_c))
 
-        if not pred_samples or not true_samples:
-            return {'sasfit_samples': 0}
+        if not pred_samples:
+            raise ValueError("No pred_samples after collecting SASFit samples")
 
-        print(f"  Fitting {len(pred_samples)} échantillons sur prédictions... sur {self.n_processes} cpu")
-        print(f"  Fitting {len(true_samples)} échantillons sur vérité terrain (témoin)... sur {self.n_processes} cpu")
+        print(f"  Fitting {len(pred_samples)} samples on predictions... using {self.n_processes} cpus")
+        if true_samples:
+            print(f"  Fitting {len(true_samples)} samples on ground truth (control)... using {self.n_processes} cpus")
 
-        # Fitting parallèle pour les prédictions
-        pred_fit_args = [(sample, self.qmin_fit, self.qmax_fit, self.factor_scale_to_conc)
+        pred_fit_args = [(sample, self.qmin_fit, self.qmax_fit, self.factor_scale_to_conc, use_first_n_points)
                         for sample in pred_samples]
 
-        # Fitting parallèle pour la vérité terrain
-        true_fit_args = [(sample, self.qmin_fit, self.qmax_fit, self.factor_scale_to_conc)
-                        for sample in true_samples]
+        true_fit_args = [(sample, self.qmin_fit, self.qmax_fit, self.factor_scale_to_conc, use_first_n_points)
+            for sample in true_samples] if true_samples else []
 
         pred_results = Parallel(n_jobs=self.n_processes)(
             delayed(sasfit_single_sample)(arg) for arg in pred_fit_args
         )
         true_results = Parallel(n_jobs=self.n_processes)(
             delayed(sasfit_single_sample)(arg) for arg in true_fit_args
-        )
+        ) if true_fit_args else []
 
-        # Traitement résultats prédictions
         pred_successful = [r for r in pred_results if r is not None]
         true_successful = [r for r in true_results if r is not None]
 
@@ -553,8 +626,8 @@ class ValidationMetricsCalculator:
             print("\n" + "-"*50)
             print("           PERFORMANCE RATIOS (Pred/Truth)")
             print("-"*50)
-            print(f"{'Parameter':<15} {'Ratio':<10} {'Status':<15}")
-            print("-"*40)
+            print(f"{'Parameter':<15} {'Ratio':<10}")
+            print("-"*25)
             
             print(f"{'Diameter':<15} {diam_ratio:<10.2f}")
             print(f"{'Length':<15} {length_ratio:<10.2f}")
@@ -574,7 +647,7 @@ class ValidationMetricsCalculator:
             df = pd.DataFrame(all_detailed)
             csv_path = self.output_dir / "sasfit_detailed_results.csv"
             df.to_csv(csv_path, index=False)
-            print(f"✓ Détails SASFit sauvés: {csv_path}")
+            print(f"✓ SASFit details saved: {csv_path}")
 
         results_dict.update({
             'sasfit_total_processed': len(pred_samples),
@@ -586,14 +659,14 @@ class ValidationMetricsCalculator:
 
 
     def run_validation(self) -> Dict[str, Any]:
-        """Exécute le calcul complet des métriques de validation."""
-        print(f"Démarrage validation - Random State: {self.random_state}")
+        """Execute complete validation metrics calculation."""
+        print(f"Starting validation - Random State: {self.random_state}")
 
-        # Calcul des métriques
+        # Compute metrics
         reconstruction_metrics = self.compute_reconstruction_metrics()
         sasfit_metrics = self.compute_sasfit_metrics()
 
-        # Fusion résultats
+        # Merge results
         results = {**reconstruction_metrics, **sasfit_metrics}
         results.update({
             'random_state': self.random_state,
@@ -602,53 +675,122 @@ class ValidationMetricsCalculator:
             'data_path': str(self.data_path)
         })
 
-        # Sauvegarde
+        # Save results
         self._save_results(results)
 
-        print(f"\n✅ Validation terminée - Résultats dans {self.output_dir}")
+        print(f"\n✅ Validation completed - Results in {self.output_dir}")
         return results
 
     def _save_results(self, results: Dict[str, Any]):
-        """Sauvegarde les résultats sous différents formats."""
+        """Save results as YAML and text with SASFit table."""
 
         yaml_path = self.output_dir / "validation_metrics.yaml"
         with open(yaml_path, 'w') as f:
             yaml.dump(results, f, default_flow_style=False)
 
-        print(f"✓ Résultats sauvés: YAML")
+        summary_path = self.output_dir / "metrics_summary.txt"
+        with open(summary_path, 'w') as f:
+            f.write("=== VALIDATION METRICS ===\n\n")
+            f.write(f"Model: {results.get('model_type', 'N/A')}\n")
+            f.write(f"Reconstruction samples: {results.get('samples_evaluated', 0)}\n")
+            f.write(f"SASFit pred samples: {results.get('sasfit_pred_samples', 0)}\n")
+            f.write(f"SASFit true samples: {results.get('sasfit_true_samples', 0)}\n")
+            f.write(f"Random state: {results.get('random_state', 'N/A')}\n\n")
+
+            if 'global_mae' in results:
+                f.write("RECONSTRUCTION:\n")
+                f.write(f"  MAE: {results['global_mae']:.6f}\n")
+                f.write(f"  RMSE: {results.get('global_rmse', 0.0):.6f}\n")
+                f.write(f"  R²: {results.get('global_r2', 0.0):.6f}\n\n")
+
+            if ('mae_diameter_nm_pred' in results) or ('mae_diameter_nm_true' in results):
+                f.write("="*80 + "\n")
+                f.write("                           SASFIT METRICS SUMMARY\n")
+                f.write("="*80 + "\n")
+                header = f"{'Parameter':<15} {'Type':<12} {'MAE':<12} {'RMSE':<12} {'Min':<12} {'Median':<12} {'Max':<12}"
+                f.write(header + "\n")
+                f.write("-" * len(header) + "\n")
+
+                if 'mae_diameter_nm_pred' in results:
+                    f.write(f"{'Diameter (nm)':<15} {'Prediction':<12} {results['mae_diameter_nm_pred']:<12.2f} "
+                            f"{results['rmse_diameter_nm_pred']:<12.2f} "
+                            f"{results.get('min_diameter_nm_pred', 'N/A')!s:<12} "
+                            f"{results.get('median_diameter_nm_pred', 'N/A')!s:<12} "
+                            f"{results.get('max_diameter_nm_pred', 'N/A')!s:<12}\n")
+                    f.write(f"{'Length (nm)':<15} {'Prediction':<12} {results['mae_length_nm_pred']:<12.2f} "
+                            f"{results['rmse_length_nm_pred']:<12.2f} "
+                            f"{results.get('min_length_nm_pred', 'N/A')!s:<12} "
+                            f"{results.get('median_length_nm_pred', 'N/A')!s:<12} "
+                            f"{results.get('max_length_nm_pred', 'N/A')!s:<12}\n")
+                    f.write(f"{'Concentration':<15} {'Prediction':<12} {results['mae_concentration_pred']:<12.2e} "
+                            f"{results['rmse_concentration_pred']:<12.2e} "
+                            f"{results.get('min_concentration_pred', 'N/A')!s:<12} "
+                            f"{results.get('median_concentration_pred', 'N/A')!s:<12} "
+                            f"{results.get('max_concentration_pred', 'N/A')!s:<12}\n")
+
+                if 'mae_diameter_nm_true' in results:
+                    f.write(f"{'Diameter (nm)':<15} {'Ground Truth':<12} {results['mae_diameter_nm_true']:<12.2f} "
+                            f"{results['rmse_diameter_nm_true']:<12.2f} "
+                            f"{results.get('min_diameter_nm_true', 'N/A')!s:<12} "
+                            f"{results.get('median_diameter_nm_true', 'N/A')!s:<12} "
+                            f"{results.get('max_diameter_nm_true', 'N/A')!s:<12}\n")
+                    f.write(f"{'Length (nm)':<15} {'Ground Truth':<12} {results['mae_length_nm_true']:<12.2f} "
+                            f"{results['rmse_length_nm_true']:<12.2f} "
+                            f"{results.get('min_length_nm_true', 'N/A')!s:<12} "
+                            f"{results.get('median_length_nm_true', 'N/A')!s:<12} "
+                            f"{results.get('max_length_nm_true', 'N/A')!s:<12}\n")
+                    f.write(f"{'Concentration':<15} {'Ground Truth':<12} {results['mae_concentration_true']:<12.2e} "
+                            f"{results['rmse_concentration_true']:<12.2e} "
+                            f"{results.get('min_concentration_true', 'N/A')!s:<12} "
+                            f"{results.get('median_concentration_true', 'N/A')!s:<12} "
+                            f"{results.get('max_concentration_true', 'N/A')!s:<12}\n")
+
+                if 'sasfit_diameter_mae_ratio' in results:
+                    f.write("\n" + "-"*50 + "\n")
+                    f.write("           PERFORMANCE RATIOS (Pred/Truth)\n")
+                    f.write("-"*50 + "\n")
+                    f.write(f"{'Parameter':<15} {'Ratio':<10}\n")
+                    f.write("-"*25 + "\n")
+                    f.write(f"{'Diameter':<15} {results['sasfit_diameter_mae_ratio']:<10.2f}\n")
+                    f.write(f"{'Length':<15} {results['sasfit_length_mae_ratio']:<10.2f}\n")
+                    f.write(f"{'Concentration':<15} {results['sasfit_concentration_mae_ratio']:<10.2f}\n")
+                    f.write("\nNote: Ratio = 1.0 means perfect match with ground truth\n")
+                    f.write("="*80 + "\n")
+
+        print(f"✓ Results saved: YAML, text summary")
 
 
 def parse_args():
-    """Parse les arguments de ligne de commande."""
-    parser = argparse.ArgumentParser(description="Calcul optimisé des métriques de validation")
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description="Optimized validation metrics calculation")
 
-    parser.add_argument("-c", "--checkpoint", required=True, help="Chemin checkpoint modèle")
-    parser.add_argument("-d", "--data_path", required=True, help="Chemin fichier HDF5")
-    parser.add_argument("-o", "--outputdir", required=True, help="Répertoire de sortie")
-    parser.add_argument('--mode', choices=['les_to_saxs', 'saxs_to_les', 'les_to_les', 'saxs_to_saxs'], required=False, default=None,
-                        help='Mode de convertion pour le PairVAE')
-    parser.add_argument("--signal_length", type=int, help="Longueur de signal forcée", default=1000)
-    parser.add_argument("-cd", "--conversion_dict", help="Fichier conversion métadonnées")
+    parser.add_argument("-c", "--checkpoint", required=True, help="Model checkpoint path")
+    parser.add_argument("-d", "--data_path", required=True, help="HDF5 file path")
+    parser.add_argument("-o", "--outputdir", required=True, help="Output directory")
+    parser.add_argument('--mode', choices=['les_to_saxs', 'saxs_to_saxs'], required=False, default=None,
+                        help='Conversion mode for PairVAE')
+    parser.add_argument("--signal_length", type=int, help="Forced signal length", default=1000)
+    parser.add_argument("-cd", "--conversion_dict", help="Metadata conversion file")
 
-    parser.add_argument("--batch_size", type=int, default=32, help="Taille batch")
-    parser.add_argument("--eval_percentage", type=float, default=0.5,
-                       help="% dataset pour métriques reconstruction")
-    parser.add_argument("--sasfit_percentage", type=float, default=0.5,
-                       help="% dataset pour SASFit")
+    parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
+    parser.add_argument("--eval_percentage", type=float, default=0.05,
+                       help="% dataset for reconstruction metrics")
+    parser.add_argument("--sasfit_percentage", type=float, default=0.0005,
+                       help="% dataset for SASFit")
 
     parser.add_argument("--qmin_fit", type=float, default=0.001, help="Q min fitting")
     parser.add_argument("--qmax_fit", type=float, default=0.5, help="Q max fitting")
     parser.add_argument("--factor_scale_to_conc", type=float, default=20878,
-                       help="Facteur conversion échelle->concentration")
+                       help="Scale to concentration conversion factor")
 
-    parser.add_argument("--n_processes", type=int, help="Nombre processus SASFit")
-    parser.add_argument("--random_state", type=int, default=42, help="Graine aléatoire")
+    parser.add_argument("--n_processes", type=int, help="Number of SASFit processes")
+    parser.add_argument("--random_state", type=int, default=42, help="Random seed")
     
     return parser.parse_args()
 
 
 def main():
-    """Point d'entrée principal."""
+    """Main entry point."""
     args = parse_args()
     print(f"Checkpoint: {args.checkpoint}")
     print(f"Dataset: {args.data_path}")
@@ -667,7 +809,8 @@ def main():
         factor_scale_to_conc=args.factor_scale_to_conc,
         n_processes=args.n_processes,
         random_state=args.random_state,
-        signal_length=args.signal_length
+        signal_length=args.signal_length,
+        mode=args.mode
     )
 
     calculator.run_validation()

@@ -132,32 +132,56 @@ class PlPairVAE(pl.LightningModule):
         }
 
     def les_to_saxs(self, batch):
+        assert "data_y_les" in batch or "data_y" in batch, "Need 'data_y_les' or 'data_y' in batch"
+        assert "data_q_les" in batch or "data_q" in batch, "Need 'data_q_les' or 'data_q' in batch"
         
-        output_les = self.model.vae_les(batch)
+        les_batch = {
+            "data_y": batch['data_y_les'] if "data_y_les" in batch else batch["data_y"],
+            "data_q": batch['data_q_les'] if "data_q_les" in batch else batch["data_q"],
+            "metadata": batch["metadata"]
+        }
+        output_les = self.model.vae_les(les_batch)
         recon_les2saxs = self.model.vae_saxs.decode(output_les["z"])
-
-        return recon_les2saxs, batch["data_q"]
+        return recon_les2saxs, batch["data_q_les"] if "data_q_les" in batch else batch["data_q"]
 
     def saxs_to_les(self, batch):
+        assert "data_y_saxs" in batch or "data_y" in batch, "Need 'data_y_saxs' or 'data_y' in batch"
+        assert "data_q_saxs" in batch or "data_q" in batch, "Need 'data_q_saxs' or 'data_q' in batch"
         
-        output_saxs = self.model.vae_saxs(batch)
+        saxs_batch = {
+            "data_y": batch['data_y_saxs'] if "data_y_saxs" in batch else batch["data_y"],
+            "data_q": batch['data_q_saxs'] if "data_q_saxs" in batch else batch["data_q"],
+            "metadata": batch["metadata"]
+        }
+        output_saxs = self.model.vae_saxs(saxs_batch)
         recon_saxs2les = self.model.vae_les.decode(output_saxs["z"])
-
-        return recon_saxs2les, batch["data_q"]
+        return recon_saxs2les, batch["data_q_saxs"] if "data_q_saxs" in batch else batch["data_q"]
 
     def saxs_to_saxs(self, batch):
-
-        output_saxs = self.model.vae_saxs(batch)
+        assert "data_y_saxs" in batch or "data_y" in batch, "Need 'data_y_saxs' or 'data_y' in batch"
+        assert "data_q_saxs" in batch or "data_q" in batch, "Need 'data_q_saxs' or 'data_q' in batch"
+        
+        saxs_batch = {
+            "data_y": batch['data_y_saxs'] if "data_y_saxs" in batch else batch["data_y"],
+            "data_q": batch['data_q_saxs'] if "data_q_saxs" in batch else batch["data_q"],
+            "metadata": batch["metadata"]
+        }
+        output_saxs = self.model.vae_saxs(saxs_batch)
         recon_saxs2saxs = self.model.vae_saxs.decode(output_saxs["z"])
-
-        return recon_saxs2saxs, batch["data_q"]
+        return recon_saxs2saxs, batch["data_q_saxs"] if "data_q_saxs" in batch else batch["data_q"]
 
     def les_to_les(self, batch):
-
-        output_les = self.model.vae_les(batch)
+        assert "data_y_les" in batch or "data_y" in batch, "Need 'data_y_les' or 'data_y' in batch"
+        assert "data_q_les" in batch or "data_q" in batch, "Need 'data_q_les' or 'data_q' in batch"
+        
+        les_batch = {
+            "data_y": batch['data_y_les'] if "data_y_les" in batch else batch["data_y"],
+            "data_q": batch['data_q_les'] if "data_q_les" in batch else batch["data_q"],
+            "metadata": batch["metadata"]
+        }
+        output_les = self.model.vae_les(les_batch)
         recon_les2les = self.model.vae_les.decode(output_les["z"])
-
-        return recon_les2les, batch["data_q"]
+        return recon_les2les, batch["data_q_les"] if "data_q_les" in batch else batch["data_q"]
 
     def get_transforms_data_les(self):
         config = self.model.get_les_config()
