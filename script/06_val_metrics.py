@@ -20,7 +20,6 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 from joblib import Parallel, delayed
-# Ajouter le chemin src au path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.dataset.datasetH5 import HDF5Dataset
@@ -83,11 +82,9 @@ def sasfit_single_sample(args: Tuple) -> Optional[Tuple[float, float, float, flo
 
     # Espace de paramètres
     params = Parameters()
-    # Dans sasmodels c'est scale mais c'est la concentration et je rajoute un facteur pour la remettre en cm-3
-    params.add("scale", value=1e14/20878, min=1e6/20878, max=1e20/20878)
-    # Use metadata: Rayon minimum 200 A-1 (20 nm) et 1000 A-1 (100 nm)
-    #length : Min 50 A-1 (50 nm) et 150 A-1 (150 nm)
-    params.add("radius", value=250.0, min=90.0, max=510.0)   # tighten a lot
+    # params.add("scale", value=1e14/20878, min=1e6/20878, max=1e20/20878)
+    params.add("scale", value=1e14, min=1e6, max=1e20)
+    params.add("radius", value=250.0, min=90.0, max=510.0)
     params.add("length", value=100.0, min=40.0,  max=160.0)
 
     # Pas de background dans notre cas
@@ -144,7 +141,7 @@ class ValidationMetricsCalculator:
                  eval_percentage: float = 0.1, sasfit_percentage: float = 0.0005,
                  qmin_fit: float = 0.001, qmax_fit: float = 0.3,
                  factor_scale_to_conc: float = 20878, n_processes: Optional[int] = None,
-                 random_state: int = 42, signal_length: Optional[int] = None):
+                 random_state: int = 42, signal_length: Optional[int] = None, mode=None):
 
         self.checkpoint_path = Path(checkpoint_path)
         self.data_path = Path(data_path)
@@ -160,6 +157,7 @@ class ValidationMetricsCalculator:
         self.n_processes = n_processes or max(1, mp.cpu_count() - 1)
         self.random_state = random_state
         self.signal_length = signal_length
+        self.mode = mode
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -178,7 +176,10 @@ class ValidationMetricsCalculator:
         checkpoint = torch.load(self.checkpoint_path, map_location='cpu')
         self.config = checkpoint['hyper_parameters']['config']
         self.model_type = self.config['model']['type'].lower()
-
+        if self.model_type.lower() not in ['vae', 'pair_vae']:
+            raise ValueError(f"Model type {self.model_type} is not supported for inference.")
+        if elselff.model_type.lower() == 'pair_vae' and self.mode is None:
+            raise ValueError("Please provide the mode for the PairVAE model.")
         if self.model_type == 'vae':
             self.model = PlVAE.load_from_checkpoint(self.checkpoint_path)
         elif self.model_type == 'pair_vae':
@@ -407,8 +408,8 @@ class ValidationMetricsCalculator:
         if not pred_samples or not true_samples:
             return {'sasfit_samples': 0}
 
-        print(f"  Fitting {len(pred_samples)} échantillons sur prédictions...")
-        print(f"  Fitting {len(true_samples)} échantillons sur vérité terrain (témoin)...")
+        print(f"  Fitting {len(pred_samples)} échantillons sur prédictions... sur {self.n_processes} cpu")
+        print(f"  Fitting {len(true_samples)} échantillons sur vérité terrain (témoin)... sur {self.n_processes} cpu")
 
         # Fitting parallèle pour les prédictions
         pred_fit_args = [(sample, self.qmin_fit, self.qmax_fit, self.factor_scale_to_conc)
@@ -466,13 +467,6 @@ class ValidationMetricsCalculator:
                 'rmse_concentration_pred': float(np.sqrt(np.mean([e**2 for e in pred_conc_errors])))
             })
 
-            print(f"  📊 Prédictions - Diamètre MAE: {results_dict['mae_diameter_nm_pred']:.2f} nm")
-            print(f"  📊 Prédictions - Length MAE: {results_dict['mae_length_nm_pred']:.2f} nm")
-            print(f"  📊 Prédictions - Concentration MAE: {results_dict['mae_concentration_pred']:.2e}")
-            print(f"  📊 Prédictions - Concentration err MEDIAN: {float(np.median(pred_conc_errors)):.2e}")
-            print(f"  📊 Prédictions - Concentration err MIN: {float(np.min(pred_conc_errors)):.2e}")
-            print(f"  📊 Prédictions - Concentration err MAX: {float(np.max(pred_conc_errors)):.2e}")
-
         if true_successful:
             true_diam_errors = [r[0] for r in true_successful]
             true_length_errors = [r[1] for r in true_successful]
@@ -508,14 +502,43 @@ class ValidationMetricsCalculator:
                 'rmse_concentration_true': float(np.sqrt(np.mean([e**2 for e in true_conc_errors])))
             })
 
-            print(f"  ✅ Vérité terrain - Diamètre MAE: {results_dict['mae_diameter_nm_true']:.2f} nm")
-            print(f"  ✅ Vérité terrain - Length MAE: {results_dict['mae_length_nm_true']:.2f} nm")
-            print(f"  ✅ Vérité terrain - Concentration MAE: {results_dict['mae_concentration_true']:.2e}")
-            print(f"  ✅ Vérité terrain - Concentration err MEDIAN: {float(np.median(true_conc_errors)):.2e}")
-            print(f"  ✅ Vérité terrain - Concentration err MIN: {float(np.min(true_conc_errors)):.2e}")
-            print(f"  ✅ Vérité terrain - Concentration err MAX: {float(np.max(true_conc_errors)):.2e}")
+        if pred_successful or true_successful:
+            print("\n" + "="*80)
+            print("                           SASFIT METRICS SUMMARY")
+            print("="*80)
+            
+            # En-tête du tableau
+            header = f"{'Parameter':<15} {'Type':<12} {'MAE':<12} {'RMSE':<12} {'Min':<12} {'Median':<12} {'Max':<12}"
+            print(header)
+            print("-" * len(header))
+            
+            if pred_successful:
+                print(f"{'Diameter (nm)':<15} {'Prediction':<12} {results_dict['mae_diameter_nm_pred']:<12.2f} "
+                      f"{results_dict['rmse_diameter_nm_pred']:<12.2f} {np.min(pred_diam_errors):<12.2f} "
+                      f"{np.median(pred_diam_errors):<12.2f} {np.max(pred_diam_errors):<12.2f}")
+                
+                print(f"{'Length (nm)':<15} {'Prediction':<12} {results_dict['mae_length_nm_pred']:<12.2f} "
+                      f"{results_dict['rmse_length_nm_pred']:<12.2f} {np.min(pred_length_errors):<12.2f} "
+                      f"{np.median(pred_length_errors):<12.2f} {np.max(pred_length_errors):<12.2f}")
+                
+                print(f"{'Concentration':<15} {'Prediction':<12} {results_dict['mae_concentration_pred']:<12.2e} "
+                      f"{results_dict['rmse_concentration_pred']:<12.2e} {np.min(pred_conc_errors):<12.2e} "
+                      f"{np.median(pred_conc_errors):<12.2e} {np.max(pred_conc_errors):<12.2e}")
+            
+            if true_successful:
+                print(f"{'Diameter (nm)':<15} {'Ground Truth':<12} {results_dict['mae_diameter_nm_true']:<12.2f} "
+                      f"{results_dict['rmse_diameter_nm_true']:<12.2f} {np.min(true_diam_errors):<12.2f} "
+                      f"{np.median(true_diam_errors):<12.2f} {np.max(true_diam_errors):<12.2f}")
+                
+                print(f"{'Length (nm)':<15} {'Ground Truth':<12} {results_dict['mae_length_nm_true']:<12.2f} "
+                      f"{results_dict['rmse_length_nm_true']:<12.2f} {np.min(true_length_errors):<12.2f} "
+                      f"{np.median(true_length_errors):<12.2f} {np.max(true_length_errors):<12.2f}")
+                
+                print(f"{'Concentration':<15} {'Ground Truth':<12} {results_dict['mae_concentration_true']:<12.2e} "
+                      f"{results_dict['rmse_concentration_true']:<12.2e} {np.min(true_conc_errors):<12.2e} "
+                      f"{np.median(true_conc_errors):<12.2e} {np.max(true_conc_errors):<12.2e}")
 
-        # Calcul du ratio de performance (prédiction / vérité terrain)
+        # Calcul et affichage des ratios de performance
         if pred_successful and true_successful:
             diam_ratio = results_dict['mae_diameter_nm_pred'] / results_dict['mae_diameter_nm_true']
             length_ratio = results_dict['mae_length_nm_pred'] / results_dict['mae_length_nm_true']
@@ -526,10 +549,19 @@ class ValidationMetricsCalculator:
                 'sasfit_length_mae_ratio': float(length_ratio),
                 'sasfit_concentration_mae_ratio': float(conc_ratio)
             })
-
-            print(f"  📈 Ratio performance - Diamètre: {diam_ratio:.2f}x (1.0=parfait)")
-            print(f"  📈 Ratio performance - Length: {length_ratio:.2f}x (1.0=parfait)")
-            print(f"  📈 Ratio performance - Concentration: {conc_ratio:.2f}x (1.0=parfait)")
+            
+            print("\n" + "-"*50)
+            print("           PERFORMANCE RATIOS (Pred/Truth)")
+            print("-"*50)
+            print(f"{'Parameter':<15} {'Ratio':<10} {'Status':<15}")
+            print("-"*40)
+            
+            print(f"{'Diameter':<15} {diam_ratio:<10.2f}")
+            print(f"{'Length':<15} {length_ratio:<10.2f}")
+            print(f"{'Concentration':<15} {conc_ratio:<10.2f}")
+            
+            print("\nNote: Ratio = 1.0 means perfect match with ground truth")
+            print("="*80)
 
         # Sauvegarde détails combinés
         if pred_successful or true_successful:
@@ -555,7 +587,7 @@ class ValidationMetricsCalculator:
 
     def run_validation(self) -> Dict[str, Any]:
         """Exécute le calcul complet des métriques de validation."""
-        print(f"🚀 Démarrage validation - Random State: {self.random_state}")
+        print(f"Démarrage validation - Random State: {self.random_state}")
 
         # Calcul des métriques
         reconstruction_metrics = self.compute_reconstruction_metrics()
@@ -578,37 +610,12 @@ class ValidationMetricsCalculator:
 
     def _save_results(self, results: Dict[str, Any]):
         """Sauvegarde les résultats sous différents formats."""
-        # JSON
-        json_path = self.output_dir / "validation_metrics.json"
-        with open(json_path, 'w') as f:
-            json.dump(results, f, indent=2)
 
-        # YAML
         yaml_path = self.output_dir / "validation_metrics.yaml"
         with open(yaml_path, 'w') as f:
             yaml.dump(results, f, default_flow_style=False)
 
-        # Résumé texte
-        summary_path = self.output_dir / "metrics_summary.txt"
-        with open(summary_path, 'w') as f:
-            f.write("=== MÉTRIQUES DE VALIDATION ===\n\n")
-            f.write(f"Modèle: {results.get('model_type', 'N/A')}\n")
-            f.write(f"Échantillons reconstruction: {results.get('samples_evaluated', 0)}\n")
-            f.write(f"Échantillons SASFit: {results.get('sasfit_samples', 0)}\n")
-            f.write(f"Random state: {results.get('random_state', 'N/A')}\n\n")
-
-            if 'global_mae' in results:
-                f.write("RECONSTRUCTION:\n")
-                f.write(f"  MAE: {results['global_mae']:.6f}\n")
-                f.write(f"  RMSE: {results.get('global_rmse', 'N/A'):.6f}\n")
-                f.write(f"  R²: {results.get('global_r2', 'N/A'):.6f}\n\n")
-
-            if 'mae_diameter_nm' in results:
-                f.write("SASFIT:\n")
-                f.write(f"  Diamètre MAE: {results['mae_diameter_nm']:.2f} nm\n")
-                f.write(f"  Concentration MAE: {results['mae_concentration']:.2e}\n")
-
-        print(f"✓ Résultats sauvés: JSON, YAML, résumé")
+        print(f"✓ Résultats sauvés: YAML")
 
 
 def parse_args():
@@ -618,11 +625,13 @@ def parse_args():
     parser.add_argument("-c", "--checkpoint", required=True, help="Chemin checkpoint modèle")
     parser.add_argument("-d", "--data_path", required=True, help="Chemin fichier HDF5")
     parser.add_argument("-o", "--outputdir", required=True, help="Répertoire de sortie")
-    parser.add_argument("--signal_length", type=int, help="Longueur de signal forcée", default=300)
+    parser.add_argument('--mode', choices=['les_to_saxs', 'saxs_to_les', 'les_to_les', 'saxs_to_saxs'], required=False, default=None,
+                        help='Mode de convertion pour le PairVAE')
+    parser.add_argument("--signal_length", type=int, help="Longueur de signal forcée", default=1000)
     parser.add_argument("-cd", "--conversion_dict", help="Fichier conversion métadonnées")
 
     parser.add_argument("--batch_size", type=int, default=32, help="Taille batch")
-    parser.add_argument("--eval_percentage", type=float, default=0.1,
+    parser.add_argument("--eval_percentage", type=float, default=0.5,
                        help="% dataset pour métriques reconstruction")
     parser.add_argument("--sasfit_percentage", type=float, default=0.5,
                        help="% dataset pour SASFit")
@@ -634,15 +643,13 @@ def parse_args():
 
     parser.add_argument("--n_processes", type=int, help="Nombre processus SASFit")
     parser.add_argument("--random_state", type=int, default=42, help="Graine aléatoire")
-
+    
     return parser.parse_args()
 
 
 def main():
     """Point d'entrée principal."""
     args = parse_args()
-
-    print("🔬 Calculateur de Métriques de Validation v2.0")
     print(f"Checkpoint: {args.checkpoint}")
     print(f"Dataset: {args.data_path}")
     print(f"Output: {args.outputdir}")
