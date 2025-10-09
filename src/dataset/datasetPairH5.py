@@ -1,27 +1,32 @@
+"""PyTorch dataset for paired SAXS and LES spectra stored in HDF5 files."""
+
 import json
-import os
 import warnings
 from pathlib import Path
+from typing import Union
 
 import h5py
+import numpy as np
 import torch
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
-from src.dataset.transformations import *
+from src.dataset.transformations import Pipeline
 
 
 class PairHDF5Dataset(Dataset):
+    """Dataset wrapper for loading coupled SAXS/LES experiments."""
+
     def __init__(self, hdf5_file, conversion_dict: Union[dict, str, Path], metadata_filters=None,
-                 sample_frac=1, requested_metadata=[],
+                 sample_frac=1, requested_metadata=None,
                  transformer_q_saxs=Pipeline(),
-                transformer_y_saxs=Pipeline(),
-                transformer_q_les=Pipeline(),
-                transformer_y_les=Pipeline(),
+                 transformer_y_saxs=Pipeline(),
+                 transformer_q_les=Pipeline(),
+                 transformer_y_les=Pipeline(),
                  **kwargs):
-        """
-        Optimized PyTorch Dataset for HDF5 files with selective metadata preprocessing
-        """
+        """Initialize paired datasets and configure metadata filtering and transforms."""
+        if requested_metadata is None:
+            requested_metadata = []
         self.hdf5_file = hdf5_file
         self.hdf = h5py.File(hdf5_file, 'r', swmr=True)
 
@@ -42,10 +47,14 @@ class PairHDF5Dataset(Dataset):
 
         assert len(self.data_q_saxs) == len(self.data_y_saxs), "data_y_saxs and data_q_saxs must have the same length"
         assert len(self.data_q_les) == len(self.data_y_les), "data_y_saxs and data_q_saxs must have the same length"
-        assert len(self.data_q_saxs) > 0 or len(self.data_y_saxs) > 0, "H5file saxs part is empty, please check your HDF5 file\n" \
-                                                               "Check your metadata filters and make sure they are not too restrictive."
-        assert len(self.data_q_les) > 0 or len(self.data_y_les) > 0, "H5file les part is empty, please check your HDF5 file\n" \
-                                                               "Check your metadata filters and make sure they are not too restrictive."
+        assert len(self.data_q_saxs) > 0 or len(self.data_y_saxs) > 0, (
+            "H5file saxs part is empty, please check your HDF5 file\n"
+            "Check your metadata filters and make sure they are not too restrictive."
+        )
+        assert len(self.data_q_les) > 0 or len(self.data_y_les) > 0, (
+            "H5file les part is empty, please check your HDF5 file\n"
+            "Check your metadata filters and make sure they are not too restrictive."
+        )
 
         self.transformer_q_saxs = _ensure_pipeline(transformer_q_saxs)
         self.transformer_y_saxs = _ensure_pipeline(transformer_y_saxs)
@@ -65,17 +74,14 @@ class PairHDF5Dataset(Dataset):
             self.conversion_dict = None
             self.filtered_indices = list(range(len(self.data_q_les)))
 
-        # Filters
         self.metadata_filters = metadata_filters or {}
         self.filtered_indices = self._apply_metadata_filters()
 
-        # Validate and apply data fraction
         self._validate_frac(sample_frac)
         self.sample_frac = sample_frac
         if 0 < sample_frac < 1:
             self._apply_data_fraction(sample_frac)
 
-        # Print initialization info
         self._print_init_info()
 
         self.transformer_y_saxs.fit(self.data_y_saxs[self.filtered_indices])
@@ -157,6 +163,7 @@ class PairHDF5Dataset(Dataset):
         self.filtered_indices = self.filtered_indices[:num_samples]
 
     def __len__(self):
+        """Return the number of filtered SAXS/LES sample pairs."""
         return len(self.filtered_indices)
 
     def _get_metadata(self, idx):
@@ -168,40 +175,33 @@ class PairHDF5Dataset(Dataset):
         return metadata
 
     def __getitem__(self, idx):
-        """Optimized data loading with timing and progress tracking"""
-        # Get original dataset index
+        """Return the paired SAXS/LES tensors and metadata for a sample."""
         original_idx = self.filtered_indices[idx]
 
-        # Load main data
         data_q_saxs = self.data_q_saxs[original_idx]
         data_y_saxs = self.data_y_saxs[original_idx]
         data_q_les = self.data_q_les[original_idx]
         data_y_les = self.data_y_les[original_idx]
 
-        # Get preprocessed metadata
         metadata = self._get_metadata(original_idx)
         metadata = {k: torch.tensor(v) for k, v in metadata.items()}
 
-        # Data processing
         data_q_saxs = self.transformer_q_saxs.transform(data_q_saxs)
         data_y_saxs = self.transformer_y_saxs.transform(data_y_saxs)
         data_q_les = self.transformer_q_les.transform(data_q_les)
         data_y_les = self.transformer_y_les.transform(data_y_les)
 
-        # Convert to tensors if needed
         data_q_saxs = torch.as_tensor(data_q_saxs, dtype=torch.float32)
         data_y_saxs = torch.as_tensor(data_y_saxs, dtype=torch.float32)
         data_q_les = torch.as_tensor(data_q_les, dtype=torch.float32)
         data_y_les = torch.as_tensor(data_y_les, dtype=torch.float32)
 
-        # Vérification NaN/inf sur les données d'entrée (avant batch)
         for name, arr in zip([
             'data_q_saxs', 'data_y_saxs', 'data_q_les', 'data_y_les'],
             [data_q_saxs, data_y_saxs, data_q_les, data_y_les]):
             if torch.isnan(arr).any() or torch.isinf(arr).any():
                 raise RuntimeError(f"[PairHDF5Dataset][idx={idx}] {name} contient NaN ou inf!")
 
-        # return data_q, data_y, metadata, self.csv_index[original_idx]
         return {"data_q_saxs": data_q_saxs.unsqueeze(0), "data_y_saxs": data_y_saxs.unsqueeze(0),
             "data_q_les": data_q_les.unsqueeze(0), "data_y_les": data_y_les.unsqueeze(0),
             "metadata": metadata, "csv_index": self.csv_index[original_idx]}
@@ -221,6 +221,7 @@ class PairHDF5Dataset(Dataset):
 
 
 def _ensure_pipeline(transformer) -> Pipeline:
+    """Ensure that a transformer configuration is represented as a :class:`Pipeline`."""
     if isinstance(transformer, Pipeline):
         return transformer
     try:

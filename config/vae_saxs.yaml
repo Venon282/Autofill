@@ -1,9 +1,9 @@
-experiment_name: "AUTOFILL_saxs_1000"
+experiment_name: "TEST_FIT"
 run_name: saxs_cylinder_ag
 mlflow_uri: https://mlflowts.irit.fr/
 dataset:
   conversion_dict:
-  hdf5_file:  /projects/pnria/DATA/AUTOFILL/cylinder_saxs_library_no_noise_meta_diameter.h5
+  hdf5_file: "/mnt/data/WORK/AUTOFILL_data/data_1000/cylinder_saxs_library_no_noise_meta_diameter.h5"
   metadata_filters:
   requested_metadata:
   sample_frac: 1.0
@@ -16,8 +16,8 @@ transforms_data:
       pad_size: 1000
 
 training:
-  array_train_indices: /projects/pnria/DATA/AUTOFILL/train_(pair_saxs_les).npy
-  array_val_indices: /projects/pnria/DATA/AUTOFILL/val_(pair_saxs_les).npy
+  array_train_indices: "/mnt/data/WORK/AUTOFILL_data/data_1000/train_(pair_saxs_les).npy"
+  array_val_indices: "/mnt/data/WORK/AUTOFILL_data/data_1000/val_(pair_saxs_les).npy"
   weighted_loss : True
   weighted_loss_limit_index: 300
   T_max: 100

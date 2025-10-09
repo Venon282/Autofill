@@ -1,10 +1,16 @@
+"""Utilities for running inference from trained VAE and PairVAE checkpoints."""
+
+from __future__ import annotations
+
 import abc
-import os
-import yaml
 import json
+import os
+from typing import Dict, Optional
+
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import yaml
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -14,123 +20,135 @@ from src.dataset.transformations import Pipeline
 from src.model.pairvae.pl_pairvae import PlPairVAE
 from src.model.vae.pl_vae import PlVAE
 
-def move_to_device(batch, device):
+
+def move_to_device(batch, device: torch.device):
+    """Recursively move tensors and collections onto ``device``."""
+
     if isinstance(batch, torch.Tensor):
         return batch.to(device)
-    elif isinstance(batch, dict):
+    if isinstance(batch, dict):
         return {k: move_to_device(v, device) for k, v in batch.items()}
-    elif isinstance(batch, list):
+    if isinstance(batch, list):
         return [move_to_device(v, device) for v in batch]
-    elif isinstance(batch, tuple):
+    if isinstance(batch, tuple):
         return tuple(move_to_device(v, device) for v in batch)
-    else:
-        return batch
+    return batch
 
 
-class BaseInferencer:
-    def __init__(self, output_dir, save_plot, checkpoint_path, hparams, data_path, conversion_dict_path=None, sample_frac=1.0, batch_size=32, data_dir="."):
+class BaseInferencer(abc.ABC):
+    """Shared scaffolding for dataset preparation and checkpoint loading."""
+
+    def __init__(
+        self,
+        output_dir: str,
+        save_plot: bool,
+        checkpoint_path: str,
+        hparams: Dict,
+        data_path: str,
+        conversion_dict_path: Optional[str] = None,
+        sample_frac: float = 1.0,
+        batch_size: int = 32,
+        data_dir: str = ".",
+    ) -> None:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.batch_size = batch_size
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
-
         self.config = hparams
-
         self.model = self.load_model(checkpoint_path)
         self.model.to(self.device).eval()
-
-        if conversion_dict_path is None :
-            self.conversion_dict = self.config["conversion_dict"]
-        else :
-            with open(conversion_dict_path, 'r') as file:
+        if conversion_dict_path is None:
+            self.conversion_dict = self.config.get("conversion_dict")
+        else:
+            with open(conversion_dict_path, 'r', encoding='utf-8') as file:
                 self.conversion_dict = json.load(file)
-
         self.data_path = data_path
         self.data_dir = data_dir
         self.sample_frac = sample_frac
-        input_dim = self.get_input_dim()
-        self.compute_dataset(input_dim)
         self.save_plot = save_plot
-        self.use_loglog = self.config["training"]["use_loglog"]
+        self.use_loglog = self.config["training"].get("use_loglog", False)
+        self.dataset = None
+        self.invert = lambda y, q: (y, q)
+        self.format = ''
+        self.compute_dataset(self.get_input_dim())
 
     @abc.abstractmethod
-    def get_input_dim(self):
-        raise NotImplementedError("get_input_dim method should be implemented in subclasses")
+    def get_input_dim(self) -> Optional[int]:
+        """Return the expected model input dimension when applicable."""
 
     @abc.abstractmethod
-    def compute_dataset(self, input_dim):
-        raise NotImplementedError("compute_dataset method should be implemented in subclasses.")
+    def compute_dataset(self, input_dim: Optional[int]) -> None:
+        """Prepare the dataset according to ``data_path`` and ``input_dim``."""
 
     @abc.abstractmethod
-    def load_model(self, path):
-        raise NotImplementedError("load_model method should be implemented in subclasses")
+    def load_model(self, path: str):
+        """Load and return the Lightning module from ``path``."""
 
     @abc.abstractmethod
-    def infer_and_save(self):
-        raise NotImplementedError("The infer_and_save method should be implemented in subclasses.")
+    def infer_and_save(self) -> None:
+        """Run inference and persist artifacts to ``output_dir``."""
 
-    def save_pred(self, batch, i, q_arr, y_arrs, metadata):
+    def save_pred(self, batch, index: int, q_arr: np.ndarray, y_arrs: Dict[str, np.ndarray], metadata: Dict) -> None:
+        """Save predictions and metadata for a single sample."""
 
-        # Metadata
         converted_metadata = {}
-        for k, v in metadata.items():
-            v = v.detach().cpu().numpy().item()
-            if self.conversion_dict is not None and k in self.conversion_dict:
-                inv_conv = self.conversion_dict[k]
-                inv_conv = {v_: k_ for k_, v_ in inv_conv.items()}
-                v = inv_conv.get(v, v)                
-            converted_metadata[k] = v
+        for key, value in metadata.items():
+            value = value.detach().cpu().numpy().item()
+            if self.conversion_dict and key in self.conversion_dict:
+                inverse = {v_: k_ for k_, v_ in self.conversion_dict[key].items()}
+                value = inverse.get(value, value)
+            converted_metadata[key] = value
 
-        for k, y_arr in y_arrs.items() :
-            try:
-                if self.format == 'h5':
-                    idx = batch['csv_index'][i]
-                    name = str(idx.item())
-                else:
-                    path = batch['path'][i]
-                    name = os.path.splitext(os.path.basename(path))[0]
-            except KeyError:
-                # Handle the case where 'csv_index' or 'path' is not in the batch
-                name = f"sample_{i}"
-            
-            os.makedirs(os.path.join(self.output_dir, f"prediction_{name}"), exist_ok=True)
-            txt_filename = os.path.join(self.output_dir, f"prediction_{name}", f"prediction_{k}.txt")
-            with open(txt_filename, "w") as txt_file:
-                for q_val, recon_val in zip(q_arr, y_arr): 
-                    txt_file.write(f"{q_val} {recon_val}\n")
+        try:
+            if self.format == 'h5':
+                name = str(batch['csv_index'][index].item())
+            else:
+                path = batch['path'][index]
+                name = os.path.splitext(os.path.basename(path))[0]
+        except KeyError:
+            name = f"sample_{index}"
 
-            if self.save_plot : 
-                plot_filename = os.path.join(self.output_dir, f"prediction_{name}", f"plot_{k}.png")
+        prediction_dir = os.path.join(self.output_dir, f"prediction_{name}")
+        os.makedirs(prediction_dir, exist_ok=True)
+        for key, y_arr in y_arrs.items():
+            txt_filename = os.path.join(prediction_dir, f"prediction_{key}.txt")
+            np.savetxt(txt_filename, np.column_stack((q_arr, y_arr)))
+            if self.save_plot:
+                plot_filename = os.path.join(prediction_dir, f"plot_{key}.png")
                 plt.figure()
-                if self.use_loglog :
-                    plt.loglog(q_arr, y_arr, label='LogLog Prediction')
-                else : 
-                    plt.plot(q_arr, y_arr, label='Prediction')
+                if self.use_loglog:
+                    plt.loglog(q_arr, y_arr, label=f'{key} prediction')
+                else:
+                    plt.plot(q_arr, y_arr, label=f'{key} prediction')
                 plt.xlabel('q')
                 plt.ylabel('y')
-                plt.title(f'Prediction {k}')
+                plt.title(f'Prediction {key}')
                 plt.grid(True)
                 plt.legend()
                 plt.savefig(plot_filename)
                 plt.close()
 
-        yaml_filename = os.path.join(self.output_dir, f"prediction_{name}", "metadata.yaml")
-        with open(yaml_filename, "w") as yaml_file:
+        yaml_filename = os.path.join(prediction_dir, "metadata.yaml")
+        with open(yaml_filename, "w", encoding="utf-8") as yaml_file:
             yaml.dump(converted_metadata, yaml_file)
 
-    def infer(self):
+    def infer(self) -> None:
+        """Execute :meth:`infer_and_save` and report the output location."""
+
         self.infer_and_save()
         print(f"Inference results saved in {self.output_dir}")
 
 
 class VAEInferencer(BaseInferencer):
-    def load_model(self, path):
+    """Run inference for single-spectrum VAE checkpoints."""
+
+    def load_model(self, path: str):
         return PlVAE.load_from_checkpoint(checkpoint_path=path)
-    
-    def get_input_dim(self):
+
+    def get_input_dim(self) -> int:
         return self.config["model"]["args"]["input_dim"]
 
-    def infer_and_save(self):
+    def infer_and_save(self) -> None:
         loader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         with torch.no_grad():
             for batch in tqdm(loader, desc="Inference per sample"):
@@ -139,124 +157,144 @@ class VAEInferencer(BaseInferencer):
                 y_pred = outputs["recon"]
                 q_pred = batch['data_q']
                 y_pred, q_pred = self.invert(y_pred, q_pred)
-
                 metadata_batch = batch["metadata"]
                 for i in range(len(y_pred)):
                     y_arr = y_pred[i].detach().cpu().numpy().flatten()
                     q_arr = q_pred[i].detach().cpu().numpy().flatten()
-                    metadata = {k : metadata_batch[k][i] for k in list(metadata_batch.keys())}
-                    y_arrs = {"".join(self.config["dataset"]["metadata_filters"].get("technique", "signal")) : y_arr}
+                    metadata = {k: metadata_batch[k][i] for k in metadata_batch}
+                    technique = self.config["dataset"]["metadata_filters"].get("technique", ["signal"])
+                    if isinstance(technique, str):
+                        technique = [technique]
+                    signal_name = "_".join(technique)
+                    y_arrs = {signal_name or "recon": y_arr}
                     self.save_pred(batch, i, q_arr, y_arrs, metadata)
 
-
-    def compute_dataset(self, input_dim):
+    def compute_dataset(self, input_dim: Optional[int]) -> None:
+        transforms_q = Pipeline(self.config["transforms_data"]["q"])
+        transforms_y = Pipeline(self.config["transforms_data"]["y"])
         if self.data_path.endswith(".h5"):
             self.dataset = HDF5Dataset(
                 self.data_path,
                 sample_frac=self.sample_frac,
-                transformer_q=self.config["transforms_data"]["q"],
-                transformer_y=self.config["transforms_data"]["y"],
+                transformer_q=transforms_q,
+                transformer_y=transforms_y,
                 metadata_filters=self.config["dataset"]["metadata_filters"],
                 conversion_dict=self.conversion_dict,
-                # requested_metadata=['shape','material','concentration','dimension1','dimension2','opticalPathLength', 'd','h']
             )
             self.format = 'h5'
             self.invert = self.dataset.invert_transforms_func()
-        
         elif self.data_path.endswith(".csv"):
             import pandas as pd
+
             df = pd.read_csv(self.data_path)
-            df = df[df["technique"].str.lower().isin([t.lower() for t in self.config["dataset"]["metadata_filters"]["technique"]])]
-            df = df[df["material"].str.lower().isin([m.lower() for m in self.config["dataset"]["metadata_filters"]["material"]])]
+            technique_filter = [t.lower() for t in self.config["dataset"]["metadata_filters"].get("technique", [])]
+            material_filter = [m.lower() for m in self.config["dataset"]["metadata_filters"].get("material", [])]
+            if technique_filter:
+                df = df[df["technique"].str.lower().isin(technique_filter)]
+            if material_filter:
+                df = df[df["material"].str.lower().isin(material_filter)]
             df = df.reset_index(drop=True)
             self.dataset = TXTDataset(
                 dataframe=df,
                 data_dir=self.data_dir,
-                transformer_q=self.config["transforms_data"]["q"],
-                transformer_y=self.config["transforms_data"]["y"],
+                transformer_q=transforms_q,
+                transformer_y=transforms_y,
             )
             self.format = 'csv'
             self.invert = self.dataset.invert_transforms_func()
-        
         else:
             raise ValueError("Unsupported file format. Use .h5 or .csv")
 
 
 class PairVAEInferencer(BaseInferencer):
-    def __init__(self, mode, output_dir, save_plot, checkpoint_path, hparams, data_path, conversion_dict_path=None, sample_frac=1.0, batch_size=32, data_dir="."):
-        if mode not in {'les_to_saxs', 'saxs_to_les', 'les_to_les', 'saxs_to_saxs'}:
-            raise ValueError(f"Invalid mode '{mode}'. Expected 'les_to_saxs' or 'saxs_to_les' or 'les_to_les' or 'saxs_to_saxs'.")
+    """Run inference for PairVAE checkpoints."""
+
+    def __init__(
+        self,
+        mode: str,
+        output_dir: str,
+        save_plot: bool,
+        checkpoint_path: str,
+        hparams: Dict,
+        data_path: str,
+        conversion_dict_path: Optional[str] = None,
+        sample_frac: float = 1.0,
+        batch_size: int = 32,
+        data_dir: str = ".",
+    ) -> None:
+        valid_modes = {'les_to_saxs', 'saxs_to_les', 'les_to_les', 'saxs_to_saxs'}
+        if mode not in valid_modes:
+            raise ValueError(f"Invalid mode '{mode}'. Expected one of {sorted(valid_modes)}.")
         self.mode = mode
         super().__init__(output_dir, save_plot, checkpoint_path, hparams, data_path, conversion_dict_path, sample_frac, batch_size, data_dir)
 
-    def load_model(self, path):
+    def load_model(self, path: str):
         return PlPairVAE.load_from_checkpoint(checkpoint_path=path)
 
-    def get_input_dim(self):
+    def get_input_dim(self) -> Optional[int]:
         return None
 
-    def infer_and_save(self):
+    def infer_and_save(self) -> None:
         loader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         model_methods = {
             'les_to_saxs': self.model.les_to_saxs,
             'saxs_to_les': self.model.saxs_to_les,
             'les_to_les': self.model.les_to_les,
-            'saxs_to_saxs': self.model.saxs_to_saxs
+            'saxs_to_saxs': self.model.saxs_to_saxs,
         }
+        with torch.no_grad():
+            for batch in tqdm(loader, desc="PairVAE inference"):
+                batch = move_to_device(batch, self.device)
+                y_pred, q_pred = model_methods[self.mode](batch)
+                y_pred, q_pred = self.invert(y_pred, q_pred)
+                metadata_batch = batch["metadata"]
+                for i in range(len(y_pred)):
+                    metadata = {k: metadata_batch[k][i] for k in metadata_batch}
+                    y_arr = y_pred[i].detach().cpu().numpy().flatten()
+                    q_arr = q_pred[i].detach().cpu().numpy().flatten()
+                    y_arrs = {self.mode: y_arr}
+                    self.save_pred(batch, i, q_arr, y_arrs, metadata)
 
-        for batch in tqdm(loader, desc="PairVAE inference"):
-            batch = move_to_device(batch, self.device)
-            y_pred, q_pred = model_methods[self.mode](batch)
-            y_pred, q_pred = self.invert(y_pred, q_pred)
-
-            metadata_batch = batch["metadata"]
-            for i in range(len(y_pred)):
-                metadata = {k: metadata_batch[k][i] for k in metadata_batch.keys()}
-                y_arr = y_pred[i].detach().cpu().numpy().flatten()
-                q_arr = q_pred[i].detach().cpu().numpy().flatten()
-                y_arrs = {self.mode: y_arr}
-                self.save_pred(batch, i, q_arr, y_arrs, metadata)
-
-    def compute_dataset(self, input_dim):
+    def compute_dataset(self, input_dim: Optional[int]) -> None:
         transform_config = self.config.get('transforms_data', {})
         transformers = {
             'les': {
                 'q': Pipeline(transform_config["q_les"]),
-                'y': Pipeline(transform_config["y_les"])
+                'y': Pipeline(transform_config["y_les"]),
             },
             'saxs': {
                 'q': Pipeline(transform_config["q_saxs"]),
-                'y': Pipeline(transform_config["y_saxs"])
-            }
+                'y': Pipeline(transform_config["y_saxs"]),
+            },
         }
-
         mode_config = {
             'les_to_saxs': {'input': 'les', 'output': 'saxs', 'technique': ['les']},
-            'saxs_to_les': {'input': 'saxs', 'output': 'les', 'technique': 'saxs'},
-            'les_to_les': {'input': 'les', 'output': 'les', 'technique': 'les'},
-            'saxs_to_saxs': {'input': 'saxs', 'output': 'saxs', 'technique': 'saxs'}
+            'saxs_to_les': {'input': 'saxs', 'output': 'les', 'technique': ['saxs']},
+            'les_to_les': {'input': 'les', 'output': 'les', 'technique': ['les']},
+            'saxs_to_saxs': {'input': 'saxs', 'output': 'saxs', 'technique': ['saxs']},
         }
-
         config = mode_config[self.mode]
         input_transformers = transformers[config['input']]
         output_transformers = transformers[config['output']]
 
         if self.data_path.endswith(".h5"):
-            self.config["dataset"]["metadata_filters"]["technique"] = config['technique']
+            filters = dict(self.config["dataset"]["metadata_filters"])
+            filters["technique"] = config['technique']
             self.dataset = HDF5Dataset(
                 self.data_path,
                 sample_frac=self.sample_frac,
-                metadata_filters=self.config["dataset"]["metadata_filters"],
+                metadata_filters=filters,
                 conversion_dict=self.conversion_dict,
                 transformer_q=input_transformers['q'],
                 transformer_y=input_transformers['y'],
-                # requested_metadata=['shape','material','concentration','dimension1','dimension2','opticalPathLength', 'd','h']
             )
             self.format = 'h5'
-
         elif self.data_path.endswith(".csv"):
+            import pandas as pd
+
+            df = pd.read_csv(self.data_path)
             self.dataset = TXTDataset(
-                self.data_path,
+                dataframe=df,
                 data_dir=self.data_dir,
                 transformer_q=input_transformers['q'],
                 transformer_y=input_transformers['y'],
@@ -266,8 +304,9 @@ class PairVAEInferencer(BaseInferencer):
             raise ValueError("Unsupported file format. Use .h5 or .csv")
 
         def invert(y, q):
-            y = output_transformers['y'].invert(y)
-            q = output_transformers['q'].invert(q)
-            return y, q
+            y_inv = output_transformers['y'].invert(y)
+            q_inv = output_transformers['q'].invert(q)
+            return y_inv, q_inv
+
         self.invert = invert
 

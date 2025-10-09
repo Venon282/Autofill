@@ -1,22 +1,29 @@
+"""PyTorch dataset for single-spectrum HDF5 files."""
+
 import json
-import os
 import warnings
 from pathlib import Path
-import numpy as np
+from typing import Union
 
 import h5py
+import numpy as np
 import torch
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
-from src.dataset.transformations import *
+from src.dataset.transformations import Pipeline
 
 DEFAULT_LENGTH_DATA = 1000
 
 class HDF5Dataset(Dataset):
-    def __init__(self, hdf5_file, conversion_dict: Union[dict, str, Path]=None, metadata_filters=None,
-                 sample_frac=1, requested_metadata=[],
+    """Dataset loader for single-spectrum experiments stored in HDF5 files."""
+
+    def __init__(self, hdf5_file, conversion_dict: Union[dict, str, Path] = None, metadata_filters=None,
+                 sample_frac=1, requested_metadata=None,
                  transformer_q=Pipeline(), transformer_y=Pipeline()):
+        """Initialize the dataset and eagerly prepare metadata filters and transforms."""
+        if requested_metadata is None:
+            requested_metadata = []
         self.hdf5_file = hdf5_file
         self.hdf = h5py.File(hdf5_file, 'r', swmr=True)
         try:
@@ -26,9 +33,6 @@ class HDF5Dataset(Dataset):
                 self.data_q = self.hdf["data_wavelength"]    
         except Exception as e:
             raise ValueError(f"Error loading 'data_q' or 'data_wavelength' from HDF5 file: {e}")
-
-        #indices = np.where(self.data_q[0] > 0.3)[0]
-        #print(indices)
 
         self.data_y = self.hdf['data_y']
         assert len(self.data_q) == len(self.data_y), "data_q and data_y must have the same length"
@@ -42,7 +46,7 @@ class HDF5Dataset(Dataset):
         if "len" in self.hdf.keys():
             self.len = self.hdf["len"][()]  # lire la valeur du dataset
         else:
-            self.len = arr = np.full(len(self.hdf['data_y']), DEFAULT_LENGTH_DATA)
+            self.len = np.full(len(self.hdf['data_y']), DEFAULT_LENGTH_DATA)
 
         all_metadata_cols = [col for col in self.hdf.keys() if col not in
                              ['data_q', 'data_y', 'len', 'csv_index']]
@@ -132,6 +136,7 @@ class HDF5Dataset(Dataset):
         self.filtered_indices = self.filtered_indices[:num_samples]
 
     def __len__(self):
+        """Return the number of filtered samples available in the dataset."""
         return len(self.filtered_indices)
 
     def _get_metadata(self, idx):
@@ -147,27 +152,21 @@ class HDF5Dataset(Dataset):
         return self.conversion_dict
 
     def __getitem__(self, idx):
-        """Optimized data loading with timing and progress tracking"""
-        # Get original dataset index
+        """Return the transformed tensors and metadata for the requested sample."""
         original_idx = self.filtered_indices[idx]
 
-        # Load main data
         data_q = self.data_q[original_idx]
         data_y = self.data_y[original_idx]
 
-        # Get preprocessed metadata
         metadata = self._get_metadata(original_idx)
         metadata = {k: torch.tensor(v) for k, v in metadata.items()}
 
-        # Data processing
         data_q = self.transformer_q.transform(data_q)
         data_y = self.transformer_y.transform(data_y)
 
-        # Convert to tensors if needed
         data_q = torch.as_tensor(data_q, dtype=torch.float32)
         data_y = torch.as_tensor(data_y, dtype=torch.float32)
 
-        # return data_q, data_y, metadata, self.csv_index[original_idx]
         return {"data_q": data_q.unsqueeze(0), "data_y": data_y.unsqueeze(0),
                 "metadata": metadata, "csv_index": self.csv_index[original_idx], "len": self.len[original_idx]}
 
@@ -191,6 +190,7 @@ class HDF5Dataset(Dataset):
         return func
 
 def _ensure_pipeline(transformer) -> Pipeline:
+    """Wrap raw transformation config into a :class:`Pipeline` when necessary."""
     if isinstance(transformer, Pipeline):
         return transformer
     try:

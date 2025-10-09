@@ -1,13 +1,50 @@
 # Toolbox VAE/PairVAE
 
-# TODO :
+AutoFill regroupe les scripts nécessaires pour prétraiter les fichiers
+expérimentaux, entraîner les modèles VAE et PairVAE et analyser les résultats.
+Le dépôt est pensé pour des personnes à l’aise avec Python mais encore en
+apprentissage côté IA : chaque étape fournit des explications pas-à-pas et un
+renvoi vers la documentation Sphinx.
 
-- [x] Faire l'inference => utiliser les modeles
-- [ ] Expliquer la sorti des train, poids + analyse de courbe
-- [x] Bouger les fichiers/dossier
-- [ ] Renforcer les explications sur le fonctionnement du pairVAE ?
+## Présentation du projet
 
-### Auteurs :
+AutoFill s’inscrit dans un projet de recherche visant à « auto-compléter » des
+signaux de diffusion comme la diffusion des rayons X aux petits angles (SAXS)
+et les mesures LES. Les scripts fournis automatisent l’ensemble du pipeline :
+
+- nettoyer et structurer les métadonnées issues des expériences de SAXS/LES ;
+- convertir les séries temporelles en HDF5 pour alimenter des VAEs spécialisés
+  par modalité ;
+- entraîner un modèle PairVAE capable de projeter des signaux LES vers SAXS
+  (et inversement) afin de compléter des expériences coûteuses ;
+- générer des reconstructions, calculer des métriques et ajuster des paramètres
+  physiques via SASFit pour valider les résultats.
+
+Cette logique se retrouve dans le code : les modules `src/dataset` décrivent les
+différentes modalités SAXS/LES, tandis que `src/model/pairvae` assemble deux
+VAEs pré-entraînés pour réaliser des reconstructions croisées.
+
+## Documentation
+
+- Documentation locale (Sphinx) — comment la construire:
+  1. Installer les dépendances de documentation
+     - Avec uv (recommandé):
+       - `uv pip install -e ".[docs]"`
+       - ou si vous utilisez `uv sync`: `uv sync --extra docs`
+     - Avec pip:
+       - `pip install sphinx sphinx-rtd-theme myst-parser`
+  2. Construire le site HTML
+     - `sphinx-build -b html docs docs/_build/html`
+     - (alternatif) `python -m sphinx -b html docs docs/_build/html`
+  3. Ouvrir la documentation générée
+     - `docs/_build/html/index.html`
+
+- Guides : [Tutoriels pas-à-pas en anglais](docs/tutorials.rst) pour suivre
+  chaque script du pipeline, y compris la partie validation.
+- Formats de données : [Référence des HDF5/JSON générés](docs/data_formats.rst)
+  avec des exemples de code pour inspecter les artefacts.
+
+### Auteurs
 
 - **Julien Rabault** (julien.rabault@irit.fr)
 - **Caroline de Pourtalès** (caroline.de-pourtales@irit.fr)
@@ -79,33 +116,20 @@ pip install -r requirements.txt # (Windows : .\env\Scripts\activate)
 
 ## Pipeline
 
-1. **[Prétraitement CSV](#1-prétraitement-csv)** : fusion et nettoyage → `metadata_clean.csv`
-2. **[Conversion .txt → HDF5 (VAE)](#2-conversion-txt--hdf5-avec-txttohdf5py)** : séries temporelles + métadonnées →
-   `all_data.h5` + `metadata_dict.json`
-3. **[Entraînement du modèle VAE](#3-entrainement-du-modèle-à-partir-du-fichier-hdf5)** : filtre, configuration YAML →
-   lancement du training VAE
-4. **[Conversion .txt → HDF5 (PairVAE)](#5-conversion-txt--hdf5-pour-pairvae)** : séries temporelles + métadonnées →
-   `all_data.h5` + `metadata_dict.json`
-5. **[Entraînement du modèle PAIRVAE](#6-entrainement-du-modèle-pairvae)** : filtre, configuration YAML → lancement du
-   training PairVAE
-6. **[Inference (optionnelle)](#6-inference-optionnelle)** : analyse des résultats à partir des poids entraînés
-7. **[Expert: Grid Search](#expert-grid-search)** : optimisation des hyperparamètres
-   avec la recherche par grille intégrée.
+Le workflow complet se déroule en six étapes :
 
-### 1. Prétraitement CSV
+1. **Prétraiter les métadonnées CSV** pour nettoyer et fusionner les sources.
+2. **Convertir les fichiers `.txt` en HDF5** (VAE ou PairVAE) tout en générant le dictionnaire JSON des métadonnées.
+3. **Entraîner un VAE** à l’aide du HDF5 et du dictionnaire de conversion.
+4. **Préparer les jeux de données appariés** puis **entraîner le PairVAE**.
+5. **Lancer l’inférence** sur de nouveaux fichiers ou sur un dataset existant.
+6. **(Optionnel) Calculer des métriques ou lancer une recherche de grilles**.
 
-`01_csv_pre_process.py`
+Les sections ci-dessous détaillent chaque étape. Pour davantage de contexte (structure HDF5, choix des hyperparamètres, bonnes pratiques), reportez-vous à `docs/tutorials.rst` et `docs/data_formats.rst`.
 
-Ce script fusionne et nettoie plusieurs fichiers CSV de métadonnées. Cette convertion tourne sur CPU et demande beaucoup
-de ressource pour aller vite. 
+### 1. Prétraitement CSV (`scripts/01_csv_pre_process.py`)
 
->Utiliser `tmux` pour lancer le script en arrière plan. Par exemple pour 1.5M de `.txt` cela prend environ 8h.
-
-**Arguments:**
-
-- `<inputs>` : un ou plusieurs chemins vers des fichiers CSV (séparateur ;).
-- `<output>` : chemin du fichier CSV nettoyé de sortie (séparateur ,).
-- `--sep` : séparateur des colonnes dans le csv
+Fusionnez et nettoyez plusieurs fichiers CSV de métadonnées avant toute conversion. Le script se concentre sur le CPU et peut prendre plusieurs heures sur de gros volumes de données (pensez à `tmux`).
 
 ```bash
 python scripts/01_csv_pre_process.py \
@@ -114,21 +138,27 @@ python scripts/01_csv_pre_process.py \
   -s ";"
 ```
 
-> **Exemple**: après exécution, le fichier `data/metadata_clean.csv` contient toutes les métadonnées normalisées. Vous
-> pourrez l’utiliser à l’étape suivante pour la conversion au format HDF5.
+Arguments importants :
 
-### 2. Conversion `.txt` → HDF5 avec `02_txtTOhdf5.py`
+- `inputs` : un ou plusieurs chemins vers des fichiers CSV (séparateur `;`).
+- `output` : chemin du fichier CSV nettoyé produit (séparateur `,`).
+- `--sep` : séparateur du CSV d’entrée si différent de `;`.
 
-Objectif: convertir les séries temporelles (`.txt`) et le CSV de métadonnées en un unique fichier HDF5.
+Résultat : `data/metadata_clean.csv`, un unique fichier propre prêt pour la conversion.
 
-Arguments:
+**Vérifier les chemins `path`**
 
-* `--data_csv_path` : chemin vers le fichier CSV de métadonnées (doit contenir au moins une colonne path vers les
-  fichiers .txt).
-* `--data_dir` : dossier racine contenant les fichiers .txt.
-* `--final_output_file` : chemin de sortie pour le fichier .h5 généré.
-* `--json_output` : chemin de sortie pour le dictionnaire de conversion des métadonnées catégorielles (au format JSON).
-* `--pad_size` : longueur maximale des séries temporelles (padding ou troncature appliqué si nécessaire). Default : 500.
+Les valeurs de la colonne `path` doivent être relatives à `--data_dir`. Utilisez `scripts/saminitycheck.py` pour détecter les chemins manquants avant la conversion :
+
+```bash
+python scripts/saminitycheck.py \
+  --csv data/metadata_clean.csv \
+  --basedir data/txt/
+```
+
+### 2. Conversion `.txt` → HDF5 (`scripts/02_txtTOhdf5.py`)
+
+Ce script transforme les séries temporelles `.txt` et le CSV nettoyé en un fichier HDF5 compatible VAE, ainsi qu’en un dictionnaire JSON décrivant l’encodage des métadonnées catégorielles.
 
 ```bash
 python scripts/02_txtTOhdf5.py \
@@ -139,51 +169,23 @@ python scripts/02_txtTOhdf5.py \
   --pad_size 900
 ```
 
-> **Exemple**: en sortie, `data/all_data.h5` contient `data_q`, `data_y`, `len`, `csv_index` et toutes les métadonnées,
-> et `data/metadata_dict.json` recense les encodages catégoriels. Vous utiliserez ces deux fichiers pour l’entraînement.
+Arguments clés :
 
-**Structure HDF5 générée :**
+- `--data_csv_path` : métadonnées nettoyées contenant au moins une colonne `path`.
+- `--data_dir` : dossier racine des fichiers `.txt`.
+- `--pad_size` : longueur maximale des séries ; les signaux sont tronqués ou complétés par des zéros si nécessaire.
+- `--json_output` : fichier qui contiendra le mapping `{valeur → entier}` pour chaque métadonnée catégorielle.
 
-```text
-final_output.h5
-├── data_q          [N, pad_size]
-├── data_y          [N, pad_size]
-├── len             [N]
-├── csv_index       [N]
-├── <metadata_1>    [N]
-├── <metadata_2>    [N]
-└── ...             [N]
-```
+L’HDF5 résultant contient les jeux `data_q`, `data_y`, `len`, `csv_index` ainsi que chaque colonne de métadonnées. Une description détaillée du format et des types est disponible dans `docs/data_formats.rst`.
 
-> **Note:** `data_q` et `data_y` sont les séries temporelles et `csv_index` est l’index du CSV d’origine. Les colonnes
-> de métadonnées sont ajoutées à la fin.
+### 3. Entraîner un VAE (`scripts/03_train.py --mode vae`)
 
-**Attention aux chemins (path) dans le CSV :**
-
-Les chemins indiqués dans la colonne path du CSV doivent être relatifs au répertoire --data_dir. Le script les concatène
-pour localiser les fichiers `.txt`. Toute incohérence entraînera des erreurs ou des fichiers ignorés.
-Avant de lancer la conversion, vous pouvez utiliser `saminitycheck.py` pour valider que tous les fichiers .txt
-référencés dans le CSV existent réellement dans le répertoire `--data_dir`.
-
-**Exécutez le script `saminitycheck.py` :**
-
-```bash
-python scripts/saminitycheck.py \
-  --csv data/metadata_clean.csv \
-  --basedir data/txt/
-```
-
-Ce script vérifiera que chaque chemin dans la colonne path (colonne contenant `"path"` dans son nom) du CSV correspond à
-un fichier existant dans le répertoire `--basedir`. Si des fichiers manquent, ils seront listés.
-
-### 3. Entraînement du modèle à partir du fichier HDF5 `03_train.py`
-
-Une fois le HDF5 et le JSON générés, lancez l’entraînement:
+Une fois `all_data.h5` et `metadata_dict.json` générés, lancez `scripts/03_train.py` :
 
 ```bash
 python scripts/03_train.py \
   --mode vae \
-  --config config/vae.yaml \
+  --config config/vae_saxs.yaml \
   --name AUTOFILL_SAXS_VAE \
   --hdf5_file data/all_data.h5 \
   --conversion_dict_path data/metadata_dict.json \
@@ -191,174 +193,101 @@ python scripts/03_train.py \
   --material ag
 ```
 
-> **IMPORTANT** : l'utilisation de `--technique` et `--material`dans les paramettres du script, SURCHARGE les filtres
-> définis dans le fichier de configuration YAML. Cela surcharge aussi les `pad_size` dans les transformations .
->
-> `LES` pad_size **500** par defaut
->
-> `SAXS` pad_size **54** par defaut
->
-> Il est donc préférable de ne pas les définir dans le YAML si vous utilisez ces arguments.
+Points d’attention pour les débutants :
 
-> **Exemple**: ici `data/all_data.h5` et `data/metadata_dict.json` sont issus de l’étape précédente, et seront filtrés
-> sur `technique=saxs` et `material=ag`.
+- `--technique` et `--material` surchargent les filtres du YAML et ajustent aussi le `pad_size`. Ne les cumulez pas avec des valeurs contradictoires dans la configuration.
+- Assurez-vous que `model.args.input_dim` dans le YAML correspond exactement au `pad_size` utilisé lors de la conversion.
+- Gardez `num_workers` raisonnable (ex. nombre de cœurs CPU disponibles) pour éviter une surcharge.
 
-### Paramètres minimum modifiables dans le YAML (config/vae.yml)
+Les paramètres essentiels à personnaliser dans la configuration :
 
-* **`experiment_name`** : nom de l’expérience (création de sous-dossier dans logdir).
-* **`logdir`** : dossier où seront stockés logs et checkpoints.
-* **`dataset`**
+- `run_name` / `logdir` pour contrôler où sont stockés logs et checkpoints.
+- `dataset.hdf5_file`, `dataset.conversion_dict_path` et `dataset.metadata_filters` pour sélectionner vos données.
+- `training` (epochs, batch_size, scheduler) pour ajuster l’optimisation.
 
-    * `hdf5_file` : chemin vers votre fichier `.h5`.
-    * `conversion_dict_path` : chemin vers le JSON de mapping.
-    * `metadata_filters` : filtres à appliquer sur les métadonnées (ex. material, technique, type, shape).
-    * `sample_frac` : fraction d’échantillonnage (entre 0.0 et 1.0).
-* **`transforms_data`**
+### 4. Conversion appariée et PairVAE
 
-    * `q` et `y` – `PaddingTransformer.pad_size` doit correspondre à `pad_size` utilisé lors de la conversion `.txt`.
-* **`training`**
+Pour des signaux appariés (ex. SAXS/LES), convertissez d’abord les fichiers avec `scripts/04_pair_txtTOhdf5.py` :
 
-    * `num_epochs` : nombre d’époques maximales.
-    * `batch_size` : taille de batch.
-    * `num_workers` : nombre de workers DataLoader. (Nombre de cpu disponible)
-    * `max_lr`, `T_max`, `eta_min` : planning de taux d’apprentissage.
-    * `beta` : coefficient β du VAE.
-* **`model.args`**
-    * `input_dim` : doit être égal à pad_size.
+```bash
+python scripts/04_pair_txtTOhdf5.py \
+  --data_csv_path data/metadata_clean.csv \
+  --data_dir data/txt/ \
+  --final_output_file data/all_pair_data.h5 \
+  --json_output data/pair_metadata_dict.json \
+  --pad_size 900
+```
 
-> **Note :** en dehors de ces clefs, tout autre paramètre dans le YAML n’est pas nécessairement safe à modifier si vous
-> débutez en IA. Respectez surtout la cohérence pad_size / input_dim et les chemins d’accès pour éviter les erreurs.
+Le fichier HDF5 généré contient `data_q_saxs`, `data_y_saxs`, `data_q_les`, `data_y_les`, `len`, `valid` et `csv_index`, plus les métadonnées alignées. Les chemins `saxs_path` et `les_path` doivent tous deux être valides.
 
-
-### 4. Entraînement du modèle PAIRVAE à partir du fichier HDF5 `03_train.py`
-
-De la même manière que [Conversion .txt → HDF5 (VAE)](#2-conversion-txt--hdf5-avec-txttohdf5py), vous pouvez convertir
-vos séries temporelles en un fichier HDF5 pour l’entraînement du PairVAE. Le script `04_pair_txtTOhdf5.py` est conçu
-pour cela.
-
-Arguments :
+Ensuite, lancez l’entraînement PairVAE :
 
 ```bash
 python scripts/03_train.py \
-  --mode pairvae \
-  --config config/pairvae.yml \
+  --mode pair_vae \
+  --config config/pair_vae.yaml \
   --name AUTOFILL_SAXS_PAIRVAE \
-  --hdf5_file data/all_data_pair.h5 \
+  --hdf5_file data/all_pair_data.h5 \
   --conversion_dict_path data/pair_metadata_dict.json \
   --material ag
 ```
 
-> Les chemins dans `saxs_path` et `les_path` doivent être relatifs à `--data_dir`. Vous pouvez contrôler l’existence de
-> chaque paire de fichiers avec `scripts/saminitycheck.py` au besoin.
+La configuration `pair_vae` contrôle notamment les poids de reconstruction et la taille du latent partagé. Consultez `docs/tutorials.rst` pour un exemple complet d’ajustement.
 
-Structure du HDF5 généré (final_output.h5) :
+### 5. Inférence (`scripts/05_infer.py`)
 
-```text
-final_output.h5
-├── data_q_saxs    [N, pad_size]
-├── data_y_saxs    [N, pad_size]
-├── data_q_les     [N, pad_size]
-├── data_y_les     [N, pad_size]
-├── len            [N]
-├── valid          [N]
-├── csv_index      [N]
-├── <metadata_1>   [N]
-├── <metadata_2>   [N]
-└── ...            ...
-```
+Utilisez ce script pour charger un checkpoint et générer des reconstructions ou des prédictions.
 
-Une fois la conversion terminée, vous obtenez :
-
-- `data/all_pair_data.h5` prêt pour l’entraînement ;
-- `data/pair_metadata_dict.json` contenant vos mappings catégoriels.
-
-### 5. Entraînement du modèle PAIRVAE
-
-L’entraînement du PairVAE se fait de la même manière
-que [Entraînement du modèle VAE](#3-entrainement-du-modèle-à-partir-du-fichier-hdf5), mais avec un fichier HDF5
-différent et une configuration YAML différente.
-
-TODO
-
-Dans cette exmple `data/all_data.h5` et `data/metadata_dict.json` sont issus de l’étape précédente, et seront filtrés
-sur `technique=saxs` et `material=ag`.
-
-### 6. Inference (optionnelle)
-
-Le script `05_infer.py` permet de lancer l'inférence avec les modèles VAE ou PairVAE directement en ligne de commande. 
-
-> **Note** : Lors de l'entrainnement, le modèle est sauvegarde le conversion_dict avec le quel il a été entrainé.
-> Lors de l'inference, si vous utilisez un dataset H5, il faut que le conversion_dict soit le même que celui utilisé. Vous pouvez les trouver dans la configuration sauvegarder lors de l'entrainnement.
-
-**Utilisation générale** :
 ```bash
 python scripts/05_infer.py \
-  --outputdir <CHEMIN_ENREGISTREMENT> \
-  --checkpoint <CHEMIN_CHECKPOINT> \
-  --data_path <FICHIER_DONNÉES> \
-  [--data_dir <DOSSIER_DONNÉES>] \
-  [--mode <MODE_CONVERSION>] \
-  [--batch_size <TAILLE_BATCH>]
-```
-
-**Arguments principaux** :
-
-| Argument           | Obligatoire | Description                                    |
-|--------------------|-------------|------------------------------------------------|
-| `-c/--checkpoint`  | ✓ | Chemin vers le fichier de checkpoint (.ckpt)   |
-| `-o/--outputdir`  | ✓ | Chemin vers le dossier d'enregistrement  |
-| `-d/--data_path`   | ✓ | Chemin vers les données d'entrée (.h5 ou .csv) |
-| `-s/--sample_frac`   | ❌  | Fraction du dataset à utiliser (0<s<1) (défaut: 1.0) |
-| `--mode`           | PairVAE only | `les_to_saxs` ou `les_to_les` ou `saxs_to_saxs` ou`saxs_to_les` pour le PairVAE |
-| `-bs/--batch_size` | ❌ | Taille de batch (défaut: 32)                   |
-| `-dd/--data_dir` | ❌ | Chemin vers le dossiers des données txt        |
-| `--plot` | ❌ | Booléen indiquant l'enregistrement des signaux au format png       |
-
-**Exemple pour VAE** :
-```bash
-python scripts/05_infer.py \
-  --outputdir dossier_test_vae \
+  --outputdir outputs/vae_demo \
   --checkpoint logs/vae_model.ckpt \
   --data_path data/new_data.h5 \
-  --batch_size 64
+  --batch_size 64 \
   --plot
 ```
 
-**Exemple pour PairVAE** :
+Options principales :
+
+- `--data_path` : HDF5 ou CSV à traiter. Pour un CSV, ajoutez `--data_dir` afin que le script retrouve les fichiers `.txt`.
+- `--mode` : uniquement pour PairVAE (`les_to_saxs`, `saxs_to_les`, etc.).
+- `--sample_frac` : pour tester rapidement un sous-ensemble.
+- `--plot` : enregistre les signaux au format PNG en plus des `.npy`.
+
+Les sorties sont placées dans le dossier indiqué, au format `.npy` (shape `[pad_size, 2]` : `y` et `q`).
+
+### 6. Validation et métriques (`scripts/06_val_metrics.py`)
+
+Après l’inférence, utilisez `scripts/06_val_metrics.py` pour consolider les performances du modèle et générer un rapport reproductible. Le script charge un checkpoint Lightning (`.ckpt`), parcourt un HDF5 et calcule :
+
+- des métriques de reconstruction (MAE, MSE, RMSE, R²) sur un sous-ensemble aléatoire du dataset ;
+- des ajustements physiques via SASFit (diamètre, longueur et concentration) pour un petit échantillon, avec comparaison optionnelle à la vérité terrain.
+
 ```bash
-python scripts/05_infer.py \
-  --outputdir dossier_test_pairvae \
-  --checkpoint logs/pairvae_model.ckpt \
-  --data_path data/pair_data.h5 \
-  --mode les_to_saxs \
-  --batch_size 32
+python scripts/06_val_metrics.py \
+  --checkpoint logs/vae_model.ckpt \
+  --data_path data/all_data.h5 \
+  --conversion_dict data/metadata_dict.json \
+  --outputdir outputs/vae_metrics \
+  --eval_percentage 0.1 \
+  --sasfit_percentage 0.005
 ```
 
-#### Sorties
+Points importants :
 
-Les prédictions sont sauvegardées dans le dossier `inference_outputs` sous forme de fichiers `.npy` :
-- Format : tableau NumPy de shape `(N, 2)` où `N` = longueur de la série temporelle
-- Colonne 0 : valeurs prédites (`y`)
-- Colonne 1 : vecteur q correspondant (`q`)
+- **VAE** : fournissez uniquement `--checkpoint`, `--data_path`, `--conversion_dict` et `--outputdir`.
+- **PairVAE** : ajoutez `--mode` (`les_to_saxs` ou `saxs_to_saxs`) pour préciser le domaine de sortie évalué ; les autres modes ne possèdent pas de vérité terrain adaptée pour les reconstructions.
+- Ajustez `--eval_percentage` (reconstruction) et `--sasfit_percentage` (SASFit) selon la taille du dataset : 0.05 représente 5 % des échantillons.
+- Pour accélérer SASFit, fixez `--n_processes` à un nombre de cœurs adaptés ; par défaut, le script utilise *n_cpu - 1*.
 
-```
-prediction_12345.npy  # Nom généré à partir de l'index CSV ou du nom du fichier
-├── [ [y1, q1],
-│     [y2, q2],
-│     ...            ]
-└── shape (pad_size, 2)
-```
+Les résultats sont écrits dans `--outputdir` :
 
-#### Formats supportés
+- `validation_metrics.yaml` récapitule toutes les métriques et la configuration utilisée ;
+- `metrics_summary.txt` propose un résumé prêt à partager ;
+- `reconstruction_metrics_detailed.csv` contient les scores par échantillon lorsque des reconstructions ont été calculées.
 
-| Modèle    | Formats d'entrée | Modes (PairVAE)       |
-|-----------|------------------|-----------------------|
-| VAE       | `.h5`, `.csv`    | -                     |
-| PairVAE   | `.h5`, `.csv`    | `les_to_saxs`, `saxs_to_les` |
+Pour des explorations plus avancées (recherche de grilles, comparaison de modèles), consultez la section [Expert: Grid Search](#expert-grid-search).
 
-> **Note** : Pour le VAE avec des données CSV, assurez-vous que le fichier contient une colonne `path` pointant vers les fichiers `.txt` à prédire et de preciser `--data_dir`.
-
----
 
 ### Expert: Grid Search
 

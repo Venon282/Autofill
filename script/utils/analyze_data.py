@@ -1,15 +1,25 @@
+"""Small helper to explore metadata distributions inside CSV catalogues."""
+
+from __future__ import annotations
+
+import argparse
 import csv
-from collections import defaultdict, Counter
+from collections import Counter, defaultdict
+from pathlib import Path
+from typing import Iterable, List
 
 
 class CSVLoader:
-    # Classe pour charger un fichier CSV
-    def __init__(self, filepath: str):
-        self.filepath = filepath
+    """Load a CSV file into a list of dictionaries for quick inspection."""
 
-    def load(self) -> list:
-        data = []
-        with open(self.filepath, mode='r', newline='', encoding='utf-8') as csvfile:
+    def __init__(self, filepath: str | Path) -> None:
+        self.filepath = Path(filepath)
+
+    def load(self) -> list[dict[str, str]]:
+        """Return the CSV content as dictionaries."""
+
+        data: list[dict[str, str]] = []
+        with self.filepath.open(mode="r", newline="", encoding="utf-8") as csvfile:
             reader = csv.DictReader(csvfile)
             for row in reader:
                 data.append(row)
@@ -17,85 +27,90 @@ class CSVLoader:
 
 
 class CSVAnalyzer:
-    # Classe pour analyser les colonnes material, technique et shape
-    def __init__(self, data: list):
-        self.data = data
-        self.total = len(data)
+    """Compute dataset statistics for key metadata columns."""
 
-    def count_individual(self, column: str) -> dict:
-        counts = dict(Counter(row[column] for row in self.data))
-        return counts
+    def __init__(self, data: Iterable[dict[str, str]]) -> None:
+        self.data: List[dict[str, str]] = list(data)
+        self.total = len(self.data)
 
-    def count_combinations(self) -> dict:
-        # Combinaison de material, technique et shape uniquement
-        combinations = [(row['material'], row['technique'], row['shape']) for row in self.data]
+    def count_individual(self, column: str) -> dict[str, int]:
+        """Count occurrences for a single column."""
+
+        return dict(Counter(row[column] for row in self.data))
+
+    def count_combinations(self) -> dict[tuple[str, str, str], int]:
+        """Return the distribution for ``(material, technique, shape)`` triples."""
+
+        combinations = [(row["material"], row["technique"], row["shape"]) for row in self.data]
         return dict(Counter(combinations))
 
     def count_correlations(self, variable: str) -> int:
-        """
-        Compte le nombre de cas où seule la variable spécifiée change, peu importe les autres métadonnées.
-        """
+        """Count groups where all metadata match except ``variable``."""
+
         if not self.data:
             return 0
 
-        # Dictionnaire pour regrouper les valeurs de la variable en fonction des autres métadonnées
-        groups = defaultdict(set)
-
-        # Liste des en-têtes sauf la variable à analyser
+        groups: dict[tuple[str, ...], set[str]] = defaultdict(set)
         headers = [header for header in self.data[0].keys() if header != variable]
 
         for row in self.data:
-            # Créer une clé basée sur toutes les métadonnées sauf la variable analysée
             key = tuple(row[header] for header in headers)
-            # Ajouter la valeur de la variable analysée
             groups[key].add(row[variable])
 
-        # Compter les cas où seule la variable change
         count = 0
         for key, values in groups.items():
             if len(values) > 1:
-                print(f"Corrélation trouvée pour '{variable}':")
-                print(f"  - Clé commune (autres métadonnées): {key}")
-                print(f"  - Valeurs distinctes de '{variable}': {values}")
+                print(f"Correlation for '{variable}' with metadata key {key}: {values}")
                 count += 1
-
         return count
 
 
-def main():
-    loader = CSVLoader("/projects/pnria/DATA/AUTOFILL/SAXS_100k_Curve_Au_Ag/SAXS_100k_Curve_Au_Ag.csv")
+def build_parser() -> argparse.ArgumentParser:
+    """Create the CLI to explore metadata distributions."""
+
+    parser = argparse.ArgumentParser(description="Analyse metadata distributions in a CSV catalogue.")
+    parser.add_argument("csv_path", type=str, help="Path to the CSV file to analyse.")
+    return parser
+
+
+def main() -> None:
+    """Load the CSV and print summary statistics."""
+
+    parser = build_parser()
+    args = parser.parse_args()
+
+    loader = CSVLoader(args.csv_path)
     data = loader.load()
 
     analyzer = CSVAnalyzer(data)
-    total = analyzer.total
-    count_material = analyzer.count_individual('material')
-    count_technique = analyzer.count_individual('technique')
-    count_shape = analyzer.count_individual('shape')
+    if analyzer.total == 0:
+        print("CSV file is empty.")
+        return
 
-    print("== Comptage individuel ==")
+    count_material = analyzer.count_individual("material")
+    count_technique = analyzer.count_individual("technique")
+    count_shape = analyzer.count_individual("shape")
+
+    print("== Individual distributions ==")
     print("Material:")
     for key, value in sorted(count_material.items()):
-        pct = value / total * 100
+        pct = value / analyzer.total * 100
         print(f"  - {key}: {value} ({pct:.2f}%)")
+
     print("\nTechnique:")
     for key, value in sorted(count_technique.items()):
-        pct = value / total * 100
+        pct = value / analyzer.total * 100
         print(f"  - {key}: {value} ({pct:.2f}%)")
+
     print("\nShape:")
     for key, value in sorted(count_shape.items()):
-        pct = value / total * 100
+        pct = value / analyzer.total * 100
         print(f"  - {key}: {value} ({pct:.2f}%)")
 
-    # Ajout de l'analyse des corrélations
-    print("\n== Analyse des corrélations ==")
-    correlation_count_shape = analyzer.count_correlations('shape')
-    print(f"Nombre de corrélations pour 'shape': {correlation_count_shape}")
-
-    correlation_count_material = analyzer.count_correlations('material')
-    print(f"Nombre de corrélations pour 'material': {correlation_count_material}")
-
-    correlation_count_technique = analyzer.count_correlations('technique')
-    print(f"Nombre de corrélations pour 'technique': {correlation_count_technique}")
+    print("\n== Correlation analysis ==")
+    print(f"Shape correlations: {analyzer.count_correlations('shape')}")
+    print(f"Material correlations: {analyzer.count_correlations('material')}")
+    print(f"Technique correlations: {analyzer.count_correlations('technique')}")
 
 
 if __name__ == "__main__":

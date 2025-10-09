@@ -1,41 +1,76 @@
+"""Quick CLI utility to audit missing files referenced in metadata CSVs."""
+
+from __future__ import annotations
+
 import argparse
 from pathlib import Path
 
 import pandas as pd
 from tqdm import tqdm
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--csv", type=str, default="/projects/pnria/DATA/AUTOFILL/v2/all_data_les_v2.csv")
-parser.add_argument("--basedir", type=str, default="/projects/pnria/DATA/AUTOFILL/")
-args = parser.parse_args()
 
-df = pd.read_csv(args.csv)
-base = Path(args.basedir)
+def build_parser() -> argparse.ArgumentParser:
+    """Build the command-line interface for the sanity check utility."""
 
-path_cols = [col for col in df.columns if 'path' in col.lower() and 'optical' not in col.lower()]
-print(f"Colonnes contenant 'path' : {path_cols}")
+    parser = argparse.ArgumentParser(description="Check that paths in a CSV exist on disk.")
+    parser.add_argument("--csv", type=str, required=True, help="Path to the metadata CSV file to verify.")
+    parser.add_argument("--basedir", type=str, required=True, help="Base directory prepended to relative paths in the CSV.")
+    return parser
 
-missing_per_column = {}
 
-for col in path_cols:
-    print()
-    print(f"--- Vérification pour la colonne : {col} ---")
-    paths = df[col].astype(str).apply(lambda p: Path(p.replace('\\', '/')).as_posix())
-    missing = []
+def normalize_path(path_value: str) -> Path | None:
+    """Return a Path object with consistent separators or ``None`` if empty."""
 
-    print(f"Nombre de fichiers à vérifier : {len(paths)}")
-    print(f"Fichiers à vérifier (extrait) : {paths.tolist()[:5]}...")
+    normalized = path_value.strip()
+    if not normalized or normalized.lower() == "nan":
+        return None
+    return Path(normalized.replace("\\", "/")).expanduser()
 
-    for rel_path in tqdm(paths, desc=f"Vérification ({col})"):
-        rel_path = rel_path.lstrip("/")
-        full_path = base / rel_path
-        if not full_path.exists():
-            print(f"Fichier manquant : {full_path}")
-            missing.append(rel_path)
 
-    missing_per_column[col] = missing
-    print(f"Fichiers manquants pour {col} : {len(missing)} / {len(paths)}")
+def check_paths(csv_path: Path, base_dir: Path) -> dict[str, list[str]]:
+    """Return a mapping of column name to missing relative paths."""
 
-print("\n--- Résumé global ---")
-for col, missing in missing_per_column.items():
-    print(f"{col}: {len(missing)} fichiers manquants")
+    dataframe = pd.read_csv(csv_path)
+    path_columns = [col for col in dataframe.columns if "path" in col.lower() and "optical" not in col.lower()]
+    print(f"Columns containing paths: {path_columns}")
+
+    missing_per_column: dict[str, list[str]] = {}
+    for column in path_columns:
+        print(f"\n--- Checking column: {column} ---")
+        paths = dataframe[column].astype(str).apply(normalize_path)
+        missing: list[str] = []
+
+        print(f"Total files to verify: {len(paths)}")
+        preview = [str(p) for p in paths.head(5) if p is not None]
+        print(f"First few entries: {preview}...")
+
+        for rel_path in tqdm(paths, desc=f"Verifying ({column})"):
+            if rel_path is None:
+                continue
+            cleaned = rel_path.as_posix().lstrip("/")
+            full_path = base_dir / cleaned
+            if not full_path.exists():
+                print(f"Missing file: {full_path}")
+                missing.append(cleaned)
+
+        missing_per_column[column] = missing
+        print(f"Missing files for {column}: {len(missing)} / {len(paths)}")
+
+    return missing_per_column
+
+
+def main() -> None:
+    """Entry point used by the tutorials to validate CSV references."""
+
+    parser = build_parser()
+    args = parser.parse_args()
+
+    missing = check_paths(Path(args.csv), Path(args.basedir))
+
+    print("\n--- Summary ---")
+    for column, paths in missing.items():
+        print(f"{column}: {len(paths)} missing files")
+
+
+if __name__ == "__main__":
+    main()

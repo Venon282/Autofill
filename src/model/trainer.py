@@ -1,30 +1,38 @@
+"""Training pipeline that orchestrates datasets, models, and callbacks."""
+
+from importlib import import_module, util
 from pathlib import Path
 
 import lightning.pytorch as pl
 import numpy as np
 import torch
 import yaml
-from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping
+from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from lightning.pytorch.loggers import MLFlowLogger
-from torch.utils.data import random_split, DataLoader
-try:
-    from uniqpath import unique_path
-except Exception:
+from torch.utils.data import DataLoader
+
+_UNIQPATH_SPEC = util.find_spec("uniqpath")
+if _UNIQPATH_SPEC is not None:
+    unique_path = import_module("uniqpath").unique_path  # type: ignore[attr-defined]
+else:
     def unique_path(path: Path) -> Path:
-        p = Path(path)
-        if not p.exists():
-            return p
-        i = 1
+        """Return a unique, non-existing path based on ``path``."""
+
+        candidate = Path(path)
+        if not candidate.exists():
+            return candidate
+
+        suffix = 1
         while True:
-            candidate = p.parent / f"{p.name}_{i}"
-            if not candidate.exists():
-                return candidate
-            i += 1
+            new_candidate = candidate.parent / f"{candidate.name}_{suffix}"
+            if not new_candidate.exists():
+                return new_candidate
+            suffix += 1
 
 from src.dataset.datasetH5 import HDF5Dataset
-from src.dataset.utils import *
 from src.dataset.datasetPairH5 import PairHDF5Dataset
 from src.dataset.transformations import Pipeline
+from src.dataset.utils import build_subset
 from src.model.callbacks.inference_callback import InferencePlotCallback
 from src.model.callbacks.metrics_callback import MAEMetricCallback
 from src.model.pairvae.pl_pairvae import PlPairVAE
@@ -32,7 +40,10 @@ from src.model.vae.pl_vae import PlVAE
 
 
 class TrainPipeline:
+    """High-level orchestration class that instantiates data, model, and trainer."""
+
     def __init__(self, config: dict, verbose=True):
+        """Validate configuration, prepare datasets, and instantiate the trainer."""
         self.verbose = verbose
         self.config = self._set_defaults(config)
         if self.verbose:
@@ -55,23 +66,22 @@ class TrainPipeline:
         self.log_directory = self._setup_log_directory()
 
     def _set_defaults(self, config):
-        # Required fields
+        """Validate the configuration and set sensible defaults."""
         for key in ['experiment_name', 'run_name', 'model', 'dataset', 'training']:
             if key not in config:
                 raise ValueError(f"Missing required config key: {key}")
 
         training = config['training']
-        # Required training fields
         for key in ['num_epochs']:
             if key not in training:
                 raise ValueError(f"Missing required training config key: {key}")
 
-        # Set intelligent defaults
         training.setdefault('patience', max(1, training['num_epochs'] // 5))
         training.setdefault('batch_size', 32)
         training.setdefault('num_workers', 4)
         training.setdefault('use_loglog', True)
         training.setdefault('num_gpus', 1)
+        training.setdefault('num_nodes', 1)
         training.setdefault('save_every', 1)
         training.setdefault('output_dir', 'train_results')
         training.setdefault('plot_train', True)
@@ -79,12 +89,12 @@ class TrainPipeline:
         training.setdefault('num_samples', 10)
         config['training'] = training
 
-        # Model type default
         if 'type' not in config['model']:
             raise ValueError("Missing required model type in config['model']['type']")
         return config
 
     def _safe_log_directory(self) -> Path:
+        """Create and return a unique log directory path."""
         if 'output_dir' not in self.config['training']:
             log_path = unique_path(Path(self.config['experiment_name'], self.config['run_name']))
             log_path.mkdir(parents=True)
@@ -96,6 +106,7 @@ class TrainPipeline:
         return log_path
 
     def _initialize_components(self):
+        """Instantiate model, dataset, and callbacks based on the configuration."""
         model_type = self.config['model']['type']
         common_cfg = {
             'num_samples': self.config['training'].get('num_samples', 10),
@@ -122,7 +133,6 @@ class TrainPipeline:
             model = PlVAE(self.config)
             transform_config = self.config.get('transforms_data', {})
             assert 'q' in transform_config and 'y' in transform_config, "Missing 'q' or 'y' in transform config"
-            # Ensure required metadata for SAS fitting is requested
             ds_cfg = dict(self.config['dataset'])
             req_meta = list(ds_cfg.get('requested_metadata', []) or [])
             for k in ['diameter_nm', 'concentration_original']:
@@ -135,7 +145,6 @@ class TrainPipeline:
             curves_config = {'recon': {'truth_key': 'data_y', 'pred_keys': ["recon"],
                                        'use_loglog': self.config['training']['use_loglog']}}
             callbacks.append(MAEMetricCallback())
-            # Lazy import to keep static analyzer happy
             try:
                 from src.model.callbacks.metrics_callback import SASFitMetricCallback
                 callbacks.append(SASFitMetricCallback())
@@ -157,48 +166,16 @@ class TrainPipeline:
                                                       output_dir=str(self.log_path / "inference_results"),
                                                       **train_cfg))
 
-        # Save transformer config
         self.config['transforms_data'] = dataset.transforms_to_dict()
 
         return model, dataset, callbacks
 
-    def _create_data_loaders_old(self):
-        """
-        TODO
-        fonction de séparation selon les critères d'apparaillage, 
-        par exemple si critèrev de pair saxs/les est selon concentration/materiel/forme
-        on forme tous les trios possible, 80% vont en train, 20% en val
-        IL FAUT ENREGISTRERle split pendant les vae simples pour l'utiliser dans le pair
-        """
-        dataset_instance = self.dataset
-        total_samples = len(dataset_instance)
-        train_count = int(0.8 * total_samples)
-        validation_count = total_samples - train_count
-        if self.verbose:
-            print(f"[Data] Splitting dataset: train={train_count}, validation={validation_count}")
-        train_subset, validation_subset = random_split(dataset_instance, [train_count, validation_count])
-        batch_size = self.config['training']['batch_size']
-        num_workers = self.config['training']['num_workers']
-        if self.verbose:
-            print(f"[Data] Creating DataLoaders with batch_size={batch_size}, num_workers={num_workers}")
-        training_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-        validation_loader = DataLoader(validation_subset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
-        return training_loader, validation_loader
-
     def _create_data_loaders(self):
-        """
-        TODO
-        fonction de séparation selon les critères d'apparaillage, 
-        par exemple si critèrev de pair saxs/les est selon concentration/materiel/forme
-        on forme tous les trios possible, 80% vont en train, 20% en val
-        IL FAUT ENREGISTRERle split pendant les vae simples pour l'utiliser dans le pair
-        """
-
+        """Construct train and validation data loaders from saved CSV indices."""
         train_csv_indices_saxs_les = np.load(self.config['training']['array_train_indices'], allow_pickle=True)
         val_csv_indices_saxs_les = np.load(self.config['training']['array_val_indices'], allow_pickle=True)
 
         if self.config['model']['type'].lower() == 'vae':
-            # select colonne 1 for saxs, colonne 2 for les
             if  "saxs" in self.config['run_name']:
                 train_csv_indices = [pair[1] for pair in train_csv_indices_saxs_les]
                 val_csv_indices = [pair[1] for pair in val_csv_indices_saxs_les]
@@ -222,6 +199,7 @@ class TrainPipeline:
         return training_loader, validation_loader
 
     def _configure_trainer(self):
+        """Configure callbacks, logging, and return a Lightning trainer."""
         if self.verbose:
             print("[Trainer] Configuring callbacks and logger")
         early_stop_callback = EarlyStopping(monitor='val_loss', patience=self.config['training']['patience'],
@@ -257,7 +235,7 @@ class TrainPipeline:
         )
 
     def _setup_log_directory(self) -> str:
-
+        """Persist configuration artifacts and log index arrays."""
         file_path = self.log_path / "config_model.yaml"
         with file_path.open("w", encoding="utf-8") as file:
             yaml.dump(self.config, file, default_flow_style=False, allow_unicode=True)
@@ -281,6 +259,7 @@ class TrainPipeline:
                                                     run_id=self.trainer.logger.run_id)
 
     def train(self):
+        """Launch the Lightning training loop and return the log path."""
         print("[Pipeline] Starting training")
         self.trainer.fit(
             self.model,
@@ -300,4 +279,4 @@ if __name__ == '__main__':
     with open(args.config, 'r') as f:
         configuration = yaml.safe_load(f)
     pipeline = TrainPipeline(configuration)
-    pipeline.run()
+    pipeline.train()
