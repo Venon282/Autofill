@@ -1,4 +1,4 @@
-Data Formats
+Data formats
 ============
 
 This section describes the data formats used throughout the AutoFill pipeline,
@@ -8,21 +8,21 @@ including HDF5 file structures, JSON metadata dictionaries, and CSV layouts.
    :local:
    :depth: 2
 
-HDF5 Data Files
+HDF5 data files
 ---------------
 
 The AutoFill pipeline uses HDF5 files to store preprocessed time series data
 along with associated metadata. These files are produced by the conversion
 scripts and consumed by the training and inference utilities.
 
-VAE Data Format (all_data.h5)
+VAE data format (all_data.h5)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The ``scripts/02_txtTOhdf5.py`` script produces a single HDF5 file that packs
 the cleaned metadata and the padded time series. The layout is intentionally
 simple so that it can be explored with tools such as ``h5ls`` or ``h5py``.
 
-**File Structure:**
+**File structure:**
 
 .. code-block:: none
 
@@ -33,7 +33,7 @@ simple so that it can be explored with tools such as ``h5ls`` or ``h5py``.
    ├── csv_index       [N] int64
    └── <metadata_cols> [N] float64 or int64
 
-**Dataset Descriptions:**
+**Dataset descriptions:**
 
 ``data_q``
     Two-dimensional dataset of shape ``[N, pad_size]`` containing the q-axis
@@ -65,7 +65,7 @@ simple so that it can be explored with tools such as ``h5ls`` or ``h5py``.
       (see :ref:`json-metadata-dict`)
     * **Missing values**: Stored as ``-1``
 
-**Example Usage:**
+**Example usage:**
 
 .. code-block:: python
 
@@ -82,14 +82,14 @@ simple so that it can be explored with tools such as ``h5ls`` or ``h5py``.
        print(f"Q-axis shape: {q_data.shape}")
        print(f"Original lengths: {lengths}")
 
-PairVAE Data Format (pair_all_data.h5)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+PairVAE data format (pair_all_data.h5)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The ``scripts/04_pair_txtTOhdf5.py`` script creates HDF5 files for paired
 modality training. The structure extends the single-modality format to
 accommodate two related datasets.
 
-**File Structure:**
+**File structure:**
 
 .. code-block:: none
 
@@ -103,7 +103,7 @@ accommodate two related datasets.
    ├── csv_index       [N] int64
    └── <metadata_cols> [N] float64 or int64
 
-**Dataset Descriptions:**
+**Dataset descriptions:**
 
 The paired format follows the same conventions as the single-modality version
 but duplicates the data arrays for each modality:
@@ -122,13 +122,13 @@ to the single-modality case.
 
 .. _json-metadata-dict:
 
-JSON Metadata Dictionary
+JSON metadata dictionary
 ------------------------
 
 The conversion scripts generate JSON files that map categorical string values
 to their integer encodings used in the HDF5 datasets.
 
-**File Structure:**
+**File structure:**
 
 .. code-block:: json
 
@@ -145,7 +145,7 @@ to their integer encodings used in the HDF5 datasets.
      }
    }
 
-**Usage Example:**
+**Usage example:**
 
 .. code-block:: python
 
@@ -164,20 +164,20 @@ to their integer encodings used in the HDF5 datasets.
    material_map = {v: k for k, v in conv_dict['material'].items()}
    material_decoded = [material_map.get(x, 'unknown') for x in material_encoded]
 
-CSV Data Format
+CSV data format
 ---------------
 
 Input CSV files should follow standard comma-separated format with a header
 row. The preprocessing script (``01_csv_pre_process.py``) handles different
 separators and normalizes the output.
 
-**Required Columns:**
+**Required columns:**
 
 ``path``
     Absolute or relative path to the corresponding ``.txt`` time series file.
     This column is used to locate and load the raw data during conversion.
 
-**Optional Columns:**
+**Optional columns:**
 
 Any additional columns will be included in the HDF5 metadata datasets. Common
 examples include:
@@ -188,7 +188,7 @@ examples include:
 * ``diameter``: Physical parameter for validation
 * ``length``: Physical parameter for validation
 
-**Missing Values:**
+**Missing values:**
 
 Missing or invalid entries should be left empty or marked as ``NaN``. The
 conversion process maps these to ``-1`` in the final HDF5 datasets.
@@ -202,26 +202,26 @@ conversion process maps these to ``-1`` in the final HDF5 datasets.
    data/txt/sample002.txt,gold,0.05,30.1,300
    data/txt/sample003.txt,silver,,28.7,295
 
-Validation and Debugging
+Validation and debugging
 ------------------------
 
 Before training or inference, validate your data files using the provided
 utilities:
 
-**Check File Integrity:**
+**Check file integrity:**
 
 .. code-block:: bash
 
    python scripts/saminitycheck.py data/metadata_clean.csv
 
-**Inspect HDF5 Contents:**
+**Inspect HDF5 contents:**
 
 .. code-block:: bash
 
    h5ls -r data/all_data.h5
    h5dump -H data/all_data.h5
 
-**Quick Python Check:**
+**Quick Python check:**
 
 .. code-block:: python
 

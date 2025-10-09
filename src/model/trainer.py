@@ -212,12 +212,19 @@ class TrainPipeline:
         if "mlflow_uri" in self.config:
             from dotenv import load_dotenv
             load_dotenv()
+            self.logger = MLFlowLogger(
+                experiment_name=self.config['experiment_name'],
+                run_name=self.config['run_name'],
+                tracking_uri=self.config.get("mlflow_uri", f"file:{self.config['experiment_name']}/mlrun")
+            )
+        else:
+            from lightning.pytorch.loggers import TensorBoardLogger
+            self.logger = TensorBoardLogger(
+                save_dir=str(self.log_path.parent),
+                name=self.config['experiment_name'],
+                version=self.config['run_name']
+            )
 
-        self.logger = MLFlowLogger(
-            experiment_name=self.config['experiment_name'],
-            run_name=self.config['run_name'],
-            tracking_uri=self.config.get("mlflow_uri", f"file:{self.config['experiment_name']}/mlrun")
-        )
         self.logger.log_hyperparams(self.config)
         self.all_callbacks = [early_stop_callback, checkpoint_callback] + self.extra_callback_list
         strategy = 'ddp' if torch.cuda.device_count() > 1 else 'auto'
@@ -243,20 +250,25 @@ class TrainPipeline:
         if self.verbose:
             print(f"Fichier YAML sauvegardé dans : {file_path}")
 
-        self.trainer.logger.experiment.log_artifact(
-            local_path=str(file_path),
-            run_id=self.trainer.logger.run_id
-        )
+        # Only use MLFlow-specific logging if we have MLFlow logger
+        if hasattr(self.trainer.logger, 'experiment') and hasattr(self.trainer.logger.experiment, 'log_artifact'):
+            self.trainer.logger.experiment.log_artifact(
+                local_path=str(file_path),
+                run_id=self.trainer.logger.run_id
+            )
 
         np.save(self.log_path / 'train_indices.npy', self.training_loader.dataset.indices)
         np.save(self.log_path / 'val_indices.npy', self.validation_loader.dataset.indices)
         if self.verbose:
             print(
                 f"Indices sauvegardés dans : {self.log_path / 'train_indices.npy'} et {self.log_path / 'val_indices.npy'}")
-        self.trainer.logger.experiment.log_artifact(local_path=str(self.log_path / 'train_indices.npy'),
-                                                    run_id=self.trainer.logger.run_id)
-        self.trainer.logger.experiment.log_artifact(local_path=str(self.log_path / 'val_indices.npy'),
-                                                    run_id=self.trainer.logger.run_id)
+
+        # Only use MLFlow-specific logging if we have MLFlow logger
+        if hasattr(self.trainer.logger, 'experiment') and hasattr(self.trainer.logger.experiment, 'log_artifact'):
+            self.trainer.logger.experiment.log_artifact(local_path=str(self.log_path / 'train_indices.npy'),
+                                                        run_id=self.trainer.logger.run_id)
+            self.trainer.logger.experiment.log_artifact(local_path=str(self.log_path / 'val_indices.npy'),
+                                                        run_id=self.trainer.logger.run_id)
 
     def train(self):
         """Launch the Lightning training loop and return the log path."""

@@ -1,11 +1,11 @@
-AutoFill Documentation
+AutoFill documentation
 ======================
 
-Welcome to the AutoFill documentation. This site provides an overview of the
-project along with API references for the available datasets and training
-utilities.
+Welcome to the AutoFill documentation. This site provides comprehensive guides
+for training variational autoencoders on scattering data, including both
+single-modality VAEs and paired models for cross-modal reconstruction.
 
-Project Overview
+Project overview
 ----------------
 
 AutoFill automates the data pipeline that supports the research project aiming
@@ -17,13 +17,27 @@ that can translate LES spectra into SAXS reconstructions (and vice versa). The
 ``src/model/pairvae`` combines the trained VAEs to enable cross-domain
 reconstruction and latent alignment.
 
+Quick start
+-----------
+
+1. **Getting started** - Installation and basic setup
+2. **Tutorials** - Step-by-step workflows for training and inference
+3. **Configuration guide** - Complete parameter reference for training experiments
+4. **Data formats** - Understanding HDF5 files and data structures
+
 .. toctree::
    :maxdepth: 2
-   :caption: Contents
+   :caption: User guide
 
    getting_started
-   data_formats
    tutorials
+   configuration
+   data_formats
+
+.. toctree::
+   :maxdepth: 2
+   :caption: API reference
+
    api/index
 
 Indices and tables
