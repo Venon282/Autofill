@@ -141,7 +141,8 @@ class ValidationMetricsCalculator:
                  eval_percentage: float = 0.1, sasfit_percentage: float = 0.0005,
                  qmin_fit: float = 0.001, qmax_fit: float = 0.3,
                  factor_scale_to_conc: float = 20878, n_processes: Optional[int] = None,
-                 random_state: int = 42, signal_length: Optional[int] = None, mode=None):
+                 random_state: int = 42, signal_length: Optional[int] = None, mode=None,
+                 generate_ai_report: bool = False):
 
         self.checkpoint_path = Path(checkpoint_path)
         self.data_path = Path(data_path)
@@ -158,6 +159,7 @@ class ValidationMetricsCalculator:
         self.random_state = random_state
         self.signal_length = signal_length
         self.mode = mode
+        self.generate_ai_report = generate_ai_report
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -678,6 +680,13 @@ class ValidationMetricsCalculator:
         # Save results
         self._save_results(results)
 
+        # Generate AI report if requested
+        if self.generate_ai_report:
+            print("\nGénération du rapport d'analyse IA...")
+            from utils.groq_report import GroqReportGenerator
+            self.report_generator = GroqReportGenerator()
+            self.report_generator.generate_report(results, self.output_dir)
+
         print(f"\n✅ Validation completed - Results in {self.output_dir}")
         return results
 
@@ -773,7 +782,7 @@ def parse_args():
     parser.add_argument("-cd", "--conversion_dict", help="Metadata conversion file")
 
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
-    parser.add_argument("--eval_percentage", type=float, default=0.05,
+    parser.add_argument("--eval_percentage", type=float, default=0.005,
                        help="% dataset for reconstruction metrics")
     parser.add_argument("--sasfit_percentage", type=float, default=0.0005,
                        help="% dataset for SASFit")
@@ -785,7 +794,9 @@ def parse_args():
 
     parser.add_argument("--n_processes", type=int, help="Number of SASFit processes")
     parser.add_argument("--random_state", type=int, default=42, help="Random seed")
-    
+    parser.add_argument("--generate_ai_report", action="store_true",
+                       help="Generate AI analysis report using Groq LLM")
+
     return parser.parse_args()
 
 
@@ -810,7 +821,8 @@ def main():
         n_processes=args.n_processes,
         random_state=args.random_state,
         signal_length=args.signal_length,
-        mode=args.mode
+        mode=args.mode,
+        generate_ai_report=args.generate_ai_report
     )
 
     calculator.run_validation()
