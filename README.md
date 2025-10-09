@@ -2,9 +2,6 @@
 
 AutoFill regroupe les scripts nécessaires pour prétraiter les fichiers
 expérimentaux, entraîner les modèles VAE et PairVAE et analyser les résultats.
-Le dépôt est pensé pour des personnes à l’aise avec Python mais encore en
-apprentissage côté IA : chaque étape fournit des explications pas-à-pas et un
-renvoi vers la documentation Sphinx.
 
 ## Présentation du projet
 
@@ -20,9 +17,6 @@ et les mesures LES. Les scripts fournis automatisent l’ensemble du pipeline :
 - générer des reconstructions, calculer des métriques et ajuster des paramètres
   physiques via SASFit pour valider les résultats.
 
-Cette logique se retrouve dans le code : les modules `src/dataset` décrivent les
-différentes modalités SAXS/LES, tandis que `src/model/pairvae` assemble deux
-VAEs pré-entraînés pour réaliser des reconstructions croisées.
 
 ## Documentation
 
