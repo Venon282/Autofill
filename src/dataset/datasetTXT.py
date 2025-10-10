@@ -1,3 +1,5 @@
+"""PyTorch dataset helper for spectroscopy data stored as TXT files."""
+
 from pathlib import Path
 import warnings
 from collections import OrderedDict
@@ -12,8 +14,11 @@ from src.dataset.transformations import Pipeline
 
 
 class TXTDataset(Dataset):
+    """Dataset for spectra stored as TXT/CSV files with cached preprocessing."""
+
     def __init__(self, dataframe, data_dir=Path('./'),
                  transformer_q=Pipeline(), transformer_y=Pipeline(), cache_limit=250000):
+        """Create a dataset backed by an index dataframe and lazily loaded files."""
         self.dataframe = dataframe
         self.categorical_cols = ['material', 'type', 'method', 'shape', 'researcher', 'technique']
         self.numerical_cols = ['concentration', 'opticalPathLength', 'd', 'h']
@@ -28,9 +33,11 @@ class TXTDataset(Dataset):
         self.sample_count = 0
 
     def __len__(self):
+        """Return the number of rows in the metadata dataframe."""
         return len(self.dataframe)
 
     def __getitem__(self, idx):
+        """Return tensors for the spectrum referenced by ``idx`` and cached metadata."""
         metadata = self.metadata_tensor[idx]
         relative_path = self.dataframe.iloc[idx]['path']
         file_path = self.data_dir / relative_path
@@ -67,6 +74,7 @@ class TXTDataset(Dataset):
         }
 
     def fit_transformers(self):
+        """Fit the preprocessing pipelines on the referenced dataset."""
         q_data= []
         y_data = []
         if self.transformer_q.is_fitted() and self.transformer_y.is_fitted():
@@ -85,12 +93,14 @@ class TXTDataset(Dataset):
 
 
     def _build_cat_vocab(self):
+        """Return categorical vocabularies for each metadata column."""
         return {
             col: {val: idx for idx, val in enumerate(self.dataframe[col].astype(str).unique())}
             for col in self.categorical_cols
         }
 
     def _preprocess_metadata(self):
+        """Convert categorical and numerical metadata columns into tensors."""
         cat_data = [
             self.dataframe[col].astype(str).map(self.cat_vocab[col]).fillna(-1).astype(float)
             for col in self.categorical_cols
@@ -100,6 +110,7 @@ class TXTDataset(Dataset):
         return torch.tensor(combined.values, dtype=torch.float32)
 
     def _load_data_from_file(self, file_path: Path):
+        """Load a single TXT file as ``(q, y)`` tensors."""
         try:
             df = pd.read_csv(
                 file_path,
@@ -120,12 +131,14 @@ class TXTDataset(Dataset):
         )
 
     def transforms_to_dict(self):
+        """Serialize the underlying pipelines to a dictionary."""
         return {
             "q": self.transformer_q.to_dict(),
             "y": self.transformer_y.to_dict()
         }
 
     def invert_transforms_func(self):
+        """Return a helper that inverts the fitted transformations."""
         def func(y_arr, q_arr):
             y_arr = self.transformer_y.invert(y_arr)
             q_arr = self.transformer_q.invert(q_arr)
@@ -134,6 +147,7 @@ class TXTDataset(Dataset):
 
 
 def _ensure_pipeline(transformer) -> Pipeline:
+    """Ensure that ``transformer`` is materialized as a :class:`Pipeline`."""
     if isinstance(transformer, Pipeline):
         return transformer
     try:
