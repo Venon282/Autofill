@@ -9,3 +9,7 @@ __pycache__/
 .idea/
 **.idea/
 *.slurm
+mlruns/*
+saxs_to_saxs/*
+*.out
+les_to_saxs/
