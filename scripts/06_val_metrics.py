@@ -61,6 +61,7 @@ def sasfit_single_sample(args: Tuple) -> Optional[Tuple[float, float, float, flo
     if use_first_n_points:
         # For les_to_saxs: use first N points instead of qmin/qmax filtering
         n_points = min(use_first_n_points, len(q_np), len(y_np))
+        q_np = np.load("/projects/pnria/caroline/AUTOFILL/data_sept_25/q_fit.npy")
         q_fit = q_np[:n_points]
         i_fit = y_np[:n_points]
     else:
@@ -89,8 +90,8 @@ def sasfit_single_sample(args: Tuple) -> Optional[Tuple[float, float, float, flo
 
     # Parameter space
     params = Parameters()
-    params.add("scale", value=1e14, min=1e2, max=1e30)
-    params.add("radius", value=250.0, min=90.0, max=510.0)
+    params.add("scale", value=1e14, min=1e6, max=1e20)
+    params.add("radius", value=250.0, min=100.0, max=500.0)
     params.add("length", value=100.0, min=40.0, max=160.0)
     params.add("background", value=0, vary=False)
 
@@ -122,6 +123,10 @@ def sasfit_single_sample(args: Tuple) -> Optional[Tuple[float, float, float, flo
     radius_A = res.params["radius"].value
     length_A = res.params["length"].value
 
+    volume_A3 = np.pi * radius_A**2 * length_A
+    volume_cm3 = volume_A3 * 1e-24
+
+    concentration = fitted_scale / volume_cm3 / 1e12
     converted_scale = fitted_scale * factor
     radius_nm = np.rint(radius_A/10)
     pred_diam_nm = radius_nm*2
@@ -129,9 +134,9 @@ def sasfit_single_sample(args: Tuple) -> Optional[Tuple[float, float, float, flo
 
     diam_err = abs(pred_diam_nm - true_diam)
     length_err = abs(pred_length_nm - true_length)
-    conc_err = abs(converted_scale - true_conc)/true_conc
+    conc_err = abs(concentration - true_conc)/true_conc
 
-    return (diam_err, length_err, conc_err, pred_diam_nm, pred_length_nm, converted_scale, true_diam, true_length, true_conc)
+    return (diam_err, length_err, conc_err, pred_diam_nm, pred_length_nm, concentration, true_diam, true_length, true_conc)
 
 class ValidationMetricsCalculator:
     """Optimized validation metrics calculator."""
@@ -405,7 +410,7 @@ class ValidationMetricsCalculator:
 
         use_first_n_points = None
         if self.model_type == 'pair_vae' and self.mode == 'les_to_saxs':
-            use_first_n_points = 300  
+            use_first_n_points = 500  
             print(f"  Mode les_to_saxs: using first {use_first_n_points} points instead of qmin/qmax filtering")
         else:
             print(f"  Mode {self.mode if self.model_type == 'pair_vae' else 'VAE'}: using qmin={self.qmin_fit}, qmax={self.qmax_fit}")
@@ -775,7 +780,7 @@ def parse_args():
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
     parser.add_argument("--eval_percentage", type=float, default=0.05,
                        help="% dataset for reconstruction metrics")
-    parser.add_argument("--sasfit_percentage", type=float, default=0.0005,
+    parser.add_argument("--sasfit_percentage", type=float, default=0.05,
                        help="% dataset for SASFit")
 
     parser.add_argument("--qmin_fit", type=float, default=0.001, help="Q min fitting")

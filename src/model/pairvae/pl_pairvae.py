@@ -33,10 +33,18 @@ class PlPairVAE(pl.LightningModule):
     def compute_loss(self, batch, outputs):
         """Compute weighted reconstruction and latent alignment losses."""
 
-        loss_saxs2saxs = F.mse_loss(outputs["recon_saxs"], batch["data_y_saxs"])
-        loss_les2les = F.mse_loss(outputs["recon_les"], batch["data_y_les"])
-        loss_saxs2les = F.mse_loss(outputs["recon_saxs2les"], batch["data_y_les"])
-        loss_les2saxs = F.mse_loss(outputs["recon_les2saxs"], batch["data_y_saxs"])
+        if self.config["training"]["weighted_loss"] :
+            weights = torch.ones_like(outputs["recon_saxs"])         # (batch_size, 1000)
+            weights[:, :self.config["training"]["weighted_loss_limit_index"]] = 10.0
+            loss_saxs2saxs = (weights * (outputs["recon_saxs"] - batch["data_y_saxs"]) ** 2).sum() / weights.sum()
+            loss_les2saxs = (weights * (outputs["recon_les2saxs"] - batch["data_y_saxs"]) ** 2).sum() / weights.sum()
+        else :
+            loss_saxs2saxs = F.mse_loss(outputs["recon_saxs"], batch["data_y_saxs"], reduction='mean')
+            loss_les2saxs = F.mse_loss(outputs["recon_les2saxs"], batch["data_y_saxs"], reduction='mean')
+            
+        loss_les2les = F.mse_loss(outputs["recon_les"], batch["data_y_les"], reduction='mean')
+        loss_saxs2les = F.mse_loss(outputs["recon_saxs2les"], batch["data_y_les"], reduction='mean')
+
         loss_latent = self.barlow_twins_loss(outputs["z_saxs"], outputs["z_les"])
         details = {
             "latent": loss_latent.item(),

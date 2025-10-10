@@ -12,3 +12,8 @@ __pycache__/
 docs/_build/
 *.lock
 docs/_build/
+
+mlruns/*
+saxs_to_saxs/*
+*.out
+les_to_saxs/

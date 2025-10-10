@@ -1,7 +1,7 @@
 experiment_name: PAIR_VAE_CARO
 run_name: pairvae_loss_caro
 
-mlflow_uri: https://mlflowts.irit.fr/
+mlflow_uri: 
 dataset:
   conversion_dict: 
   hdf5_file: "/projects/pnria/DATA/AUTOFILL/pair_data.h5"
@@ -10,10 +10,10 @@ dataset:
   sample_frac: 1.0
 
 training:
-  output_dir: "/projects/pnria/caroline/AUTOFILLS/pair_vae/runs/"
+  output_dir: "/projects/pnria/caroline/AUTOFILL/pair_vae/runs/"
   num_gpus: 1
   num_nodes: 1
-  num_epochs: 100
+  num_epochs: 250
   warmup_epochs: 5
   patience: 20
   use_loglog: false
@@ -21,14 +21,17 @@ training:
   batch_size: 8
   num_workers: 1
 
-  lambda_param: 0.005
-  weight_latent_similarity: 0.00001
-  weight_saxs2saxs: 1
-  weight_saxs2les: 1
-  weight_les2les: 1
-  weight_les2saxs: 1
+  weighted_loss: False
+  weighted_loss_limit_index: 400
 
-  max_lr: 1.0e-06
+  lambda_param: 0.005
+  weight_latent_similarity: 0.0001
+  weight_les2les: 0.5
+  weight_les2saxs: 5
+  weight_saxs2les: 5
+  weight_saxs2saxs: 0.5
+
+  max_lr: 1.0e-05
 
   T_max: 25
   eta_min: 1.0e-15
