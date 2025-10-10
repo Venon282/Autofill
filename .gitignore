@@ -10,3 +10,5 @@ __pycache__/
 **.idea/
 *.slurm
 docs/_build/
+*.lock
+docs/_build/
