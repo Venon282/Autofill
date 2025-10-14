@@ -278,15 +278,14 @@ class PairVAEInferencer(BaseInferencer):
         output_transformers = transformers[config['output']]
 
         if self.data_path.endswith(".h5"):
-            filters = dict(self.config["dataset"]["metadata_filters"])
-            filters["technique"] = config['technique']
             self.dataset = HDF5Dataset(
                 self.data_path,
                 sample_frac=self.sample_frac,
-                metadata_filters=filters,
+                metadata_filters=self.config["dataset"]["metadata_filters"],
                 conversion_dict=self.conversion_dict,
                 transformer_q=input_transformers['q'],
                 transformer_y=input_transformers['y'],
+                requested_metadata=['diameter_nm', 'length_nm', 'concentration_original', 'concentration'] 
             )
             self.format = 'h5'
         elif self.data_path.endswith(".csv"):

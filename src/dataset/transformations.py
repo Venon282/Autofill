@@ -95,7 +95,7 @@ class EnsurePositive(Transformer):
 
     name = "StrictlyPositiveTransformer"
 
-    def __init__(self, epsilon: float = 1e-9):
+    def __init__(self, epsilon: float = 1e-15):
         self._fitted = True
         self.epsilon = epsilon
 
@@ -113,7 +113,7 @@ class Log(Transformer):
 
     name = "LogTransformer"
 
-    def __init__(self, epsilon: float = 1e-9):
+    def __init__(self, epsilon: float = 1e-15):
         self._fitted = True
         self.epsilon = epsilon
 
