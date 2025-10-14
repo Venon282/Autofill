@@ -10,7 +10,7 @@ import multiprocessing as mp
 import os
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, Optional, Tuple, Any
 
 import numpy as np
 import pandas as pd
@@ -58,11 +58,10 @@ def lesfit_single_sample(args: Tuple) -> Optional[Tuple[float, float, float, flo
     sample_data = args
     y_np, wl, true_diam, true_length, true_conc = sample_data
 
-    Longueur = 1E-3 # Longueur: Longueur du chemin optique utilisé en m
+    Longueur = 1E-3
     if wl is None : 
         wl = np.load(PATH_TO_WL_LES)
 
-    #%% Fit du spectre
     results = fit_cyl_Ag(y_np,Longueur,wl)
 
     if results is not None :
@@ -100,7 +99,6 @@ def sasfit_single_sample(args: Tuple) -> Optional[Tuple[float, float, float, flo
     if q_np is None and use_first_n_points is not None:
         # For les_to_saxs: use first N points instead of qmin/qmax filtering
         n_points = min(use_first_n_points, len(y_np))
-        q_np = np.load(PATH_TO_Q_SAXS)
         q_fit = q_np[:n_points]
         i_fit = y_np[:n_points]
     else:
@@ -364,17 +362,15 @@ class ValidationMetricsCalculator:
 
             for batch in tqdm(loader, desc="Computing reconstruction metrics"):
                 batch = move_to_device(batch, self.device)
-
-                # Prédiction
                 if self.model_type == 'vae':
                     outputs = self.model(batch)
                     recon = self._extract_reconstruction(outputs)
+                    q_pred = outputs['data_q'] if 'data_q' in outputs else batch.get('data_q')
                 else:
-                    # PairVAE: même domaine entrée/sortie
                     if self.mode == 'les_to_les':
-                        recon, _ = self.model.les_to_les(batch)
+                        recon, q_pred = self.model.les_to_les(batch)
                     elif self.mode == 'saxs_to_saxs':
-                        recon, _ = self.model.saxs_to_saxs(batch)
+                        recon, q_pred = self.model.saxs_to_saxs(batch)
                     else:
                         recon = None
                         
@@ -385,8 +381,8 @@ class ValidationMetricsCalculator:
                 true_values = batch["data_y"].squeeze(1)
                 if recon.ndim == 3:
                     recon = recon.squeeze(1)
-                if true_values.ndim == 3:
-                    true_values = q_pred.squeeze(1)
+                # if true_values.ndim == 3:
+                #     true_values = q_pred.squeeze(1)
                 
                 true_cpu = true_values.detach().cpu()
                 recon_cpu = recon.detach().cpu()
@@ -529,7 +525,9 @@ class ValidationMetricsCalculator:
                 if q_pred.ndim == 3:
                     q_pred = q_pred.squeeze(1)
 
-                recon_inverted, q_inverted = self.invert_transforms(recon.detach().cpu(), q_pred.detach().cpu())
+                recon_inverted, _ = self.invert_transforms(recon.detach().cpu(), q_pred.detach().cpu())
+                # Q come from model input, no need to invert
+                q_inverted = q_pred.detach().cpu().numpy()
 
                 # Vérité terrain 
                 if true_values is not None:
@@ -552,7 +550,6 @@ class ValidationMetricsCalculator:
                 diam_true = meta[diameter_key].detach().cpu().numpy()
                 length_true = meta[length_key].detach().cpu().numpy()
                 conc_true = meta[concentration_key].detach().cpu().numpy()
-                lengths = batch.get("len")
 
                 for i in range(recon_inverted.shape[0]):
                     # Predicted data
@@ -568,10 +565,6 @@ class ValidationMetricsCalculator:
                     t_l = float(length_true[i]) if np.ndim(length_true) > 0 else float(length_true)
                     t_c = float(conc_true[i]) if np.ndim(conc_true) > 0 else float(conc_true)
 
-                    # On change de mode donc de q / wavelength
-                    if self.mode in ['saxs_to_les', 'les_to_saxs']:
-                        q_pred = None
-                        q_true = None
                     pred_samples.append((y_pred, q_pred, t_d, t_l, t_c))
                     if true_inverted is not None:
                         true_samples.append((y_true, q_true, t_d, t_l, t_c))

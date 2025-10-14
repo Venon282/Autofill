@@ -14,7 +14,7 @@ from src.model.pairvae.pairvae import PairVAE
 class PlPairVAE(pl.LightningModule):
     """Lightning integration of the :class:`PairVAE` model."""
 
-    def __init__(self, config):
+    def __init__(self, config, force_dataset_q=False):
         super().__init__()
         self.config = config
         self.model = PairVAE(self.config["model"])
@@ -25,7 +25,20 @@ class PlPairVAE(pl.LightningModule):
         self.weight_saxs2les = training_cfg["weight_saxs2les"]
         self.weight_les2les = training_cfg["weight_les2les"]
         self.weight_les2saxs = training_cfg["weight_les2saxs"]
-        self.save_hyperparameters()
+        self._setup_data_q_config(force_dataset_q)
+
+    def _setup_data_q_config(self, force_dataset_q=False):
+        """Configure data_q settings with warnings about source."""
+        for data_type in ["saxs", "les"]:
+            config_key = f"data_q_{data_type}"
+            if not force_dataset_q and config_key in self.config:
+                setattr(self, config_key, self.config['model'][config_key])
+                print(f"[PlVAE] WARNING: Using {config_key} from config, not from dataloader!")
+            else:
+                if force_dataset_q and config_key in self.config:
+                    print(f"[PlVAE] INFO: Forcing use of {config_key} from dataloader (ignoring config)")
+                else:
+                    print(f"[PlVAE] WARNING: Using {config_key} from dataloader, not from config!")
 
     def forward(self, batch):
         return self.model(batch)
@@ -94,59 +107,65 @@ class PlPairVAE(pl.LightningModule):
         scheduler = LambdaLR(optimizer, lr_lambda=lr_lambda)
         return {"optimizer": optimizer, "lr_scheduler": {"scheduler": scheduler, "interval": "epoch", "frequency": 1}}
 
-    def les_to_saxs(self, batch):
-        self._validate_batch(batch, 'data_y_les', 'data_q_les')
-        les_batch = {
-            "data_y": batch.get('data_y_les', batch.get("data_y")),
-            "data_q": batch.get('data_q_les', batch.get("data_q")),
+    def _prepare_batch(self, batch, data_type):
+        """Prepare batch for specific data type, using config data_q if available."""
+        y_key = f'data_y_{data_type}'
+        q_key = f'data_q_{data_type}'
+
+        self._validate_batch(batch, y_key)
+
+        # Use config data_q if defined, otherwise fallback to batch data_q
+        config_q_attr = f'data_q_{data_type}'
+        if hasattr(self, config_q_attr):
+            data_q = getattr(self, config_q_attr)
+        else:
+            data_q = batch.get(q_key, batch.get("data_q"))
+
+        return {
+            "data_y": batch.get(y_key, batch.get("data_y")),
+            "data_q": data_q,
             "metadata": batch["metadata"],
-        }
+        }, data_q
+
+    def les_to_saxs(self, batch):
+        les_batch, _ = self._prepare_batch(batch, 'les')
         output_les = self.model.vae_les(les_batch)
         recon_les2saxs = self.model.vae_saxs.decode(output_les["z"])
-        return recon_les2saxs, les_batch["data_q"]
+        return recon_les2saxs, self.get_data_q_saxs()
 
     def saxs_to_les(self, batch):
-        self._validate_batch(batch, 'data_y_saxs', 'data_q_saxs')
-        saxs_batch = {
-            "data_y": batch.get('data_y_saxs', batch.get("data_y")),
-            "data_q": batch.get('data_q_saxs', batch.get("data_q")),
-            "metadata": batch["metadata"],
-        }
+        saxs_batch, _ = self._prepare_batch(batch, 'saxs')
         output_saxs = self.model.vae_saxs(saxs_batch)
         recon_saxs2les = self.model.vae_les.decode(output_saxs["z"])
-        return recon_saxs2les, saxs_batch["data_q"]
+        return recon_saxs2les, self.get_data_q_les()
 
     def saxs_to_saxs(self, batch):
-        self._validate_batch(batch, 'data_y_saxs', 'data_q_saxs')
-        saxs_batch = {
-            "data_y": batch.get('data_y_saxs', batch.get("data_y")),
-            "data_q": batch.get('data_q_saxs', batch.get("data_q")),
-            "metadata": batch["metadata"],
-        }
+        saxs_batch, data_q = self._prepare_batch(batch, 'saxs')
         output_saxs = self.model.vae_saxs(saxs_batch)
         recon_saxs2saxs = self.model.vae_saxs.decode(output_saxs["z"])
-        return recon_saxs2saxs, saxs_batch["data_q"]
+        return recon_saxs2saxs, data_q
 
     def les_to_les(self, batch):
-        self._validate_batch(batch, 'data_y_les', 'data_q_les')
-        les_batch = {
-            "data_y": batch.get('data_y_les', batch.get("data_y")),
-            "data_q": batch.get('data_q_les', batch.get("data_q")),
-            "metadata": batch["metadata"],
-        }
+        les_batch, data_q = self._prepare_batch(batch, 'les')
         output_les = self.model.vae_les(les_batch)
         recon_les2les = self.model.vae_les.decode(output_les["z"])
-        return recon_les2les, les_batch["data_q"]
+        return recon_les2les, data_q
 
     @staticmethod
-    def _validate_batch(batch, y_key: str, q_key: str) -> None:
+    def _validate_batch(batch, y_key: str) -> None:
         if y_key not in batch and "data_y" not in batch:
             raise KeyError(f"Need '{y_key}' or 'data_y' in batch")
-        if q_key not in batch and "data_q" not in batch:
-            raise KeyError(f"Need '{q_key}' or 'data_q' in batch")
 
     def get_transforms_data_les(self):
         return self.model.get_les_config()["transforms_data"]
 
     def get_transforms_data_saxs(self):
         return self.model.get_saxs_config()["transforms_data"]
+
+    def get_data_q_saxs(self):
+        """Return the original data_q_saxs array"""
+        return self.data_q_saxs
+
+    def get_data_q_les(self):
+        """Return the original data_q_les array"""
+        return self.data_q_les

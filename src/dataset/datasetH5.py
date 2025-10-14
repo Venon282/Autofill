@@ -34,6 +34,9 @@ class HDF5Dataset(Dataset):
         except Exception as e:
             raise ValueError(f"Error loading 'data_q' or 'data_wavelength' from HDF5 file: {e}")
 
+        assert all(self.data_q.apply(lambda x: np.array_equal(x, self.data_q[0]))), "All data_q/data_wavelength arrays must be identical"
+        self.data_q = self.data_q[0]
+
         self.data_y = self.hdf['data_y']
         assert len(self.data_q) == len(self.data_y), "data_q and data_y must have the same length"
         assert len(self.data_y) > 0 or len(self.data_q) >0, "H5file is empty, please check your HDF5 file\n" \
@@ -155,13 +158,12 @@ class HDF5Dataset(Dataset):
         """Return the transformed tensors and metadata for the requested sample."""
         original_idx = self.filtered_indices[idx]
 
-        data_q = self.data_q[original_idx]
         data_y = self.data_y[original_idx]
 
         metadata = self._get_metadata(original_idx)
         metadata = {k: torch.tensor(v) for k, v in metadata.items()}
 
-        data_q = self.transformer_q.transform(data_q)
+        data_q = self.transformer_q.transform(self.data_q)
         data_y = self.transformer_y.transform(data_y)
 
         data_q = torch.as_tensor(data_q, dtype=torch.float32)
@@ -180,6 +182,10 @@ class HDF5Dataset(Dataset):
             "q": self.transformer_q.to_dict(),
             "y": self.transformer_y.to_dict()
         }
+
+    def get_data_q(self):
+        """Return the original data_q array"""
+        return self.data_q
 
     def invert_transforms_func(self):
         """Return the inverse transformation functions for data_y and data_q"""

@@ -11,7 +11,7 @@ from src.model.vae.submodel.registry import *
 class PlVAE(pl.LightningModule):
     """Train and evaluate variational auto-encoders using Lightning."""
 
-    def __init__(self, config):
+    def __init__(self, config, force_dataset_q=False):
         super().__init__()
         if config is None and not hasattr(self, 'config'):
             raise ValueError("Configuration dictionary is required for PlVAE.")
@@ -20,12 +20,18 @@ class PlVAE(pl.LightningModule):
         self.beta = config["training"]["beta"]
         model_class = self.config["model"]["vae_class"]
         self.model = MODEL_REGISTRY.get(model_class)(**self.config["model"]["args"])
-        self.save_hyperparameters()
+        if not force_dataset_q and "data_q" in self.config:
+            setattr(self, "data_q", self.config['model']["data_q"])
+            print(f"[PlVAE] WARNING: Using data_q from config, not from dataloader!")
+        else:
+            if force_dataset_q and "data_q" in self.config:
+                print(f"[PlVAE] INFO: Forcing use of data_q from dataloader (ignoring config)")
+            else:
+                print(f"[PlVAE] WARNING: Using data_q from dataloader, not from config!")
 
     def forward(self, batch):
         """Forward pass delegating to the configured sub-model."""
-
-        return self.model(y=batch["data_y"], q=batch["data_q"], metadata=batch["metadata"])
+        return self.model(y=batch["data_y"], metadata=batch["metadata"]) + {"data_q" : self.data_q if hasattr(self, 'data_q') else batch["data_q"]}
 
     def decode(self, *args, **kwargs):
         return self.model.decode(*args, **kwargs)
@@ -53,7 +59,7 @@ class PlVAE(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         """Compute training losses and log metrics."""
 
-        output = self.model(y=batch["data_y"], q=batch["data_q"], metadata=batch["metadata"])
+        output = self.model(y=batch["data_y"], metadata=batch["metadata"])
         loss, recon_loss, kl_loss = self.compute_loss(batch, output)
         self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True)
         self.log('train_recon_loss', recon_loss, on_step=True, on_epoch=True, prog_bar=False)
@@ -63,7 +69,7 @@ class PlVAE(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         """Compute validation metrics."""
 
-        output = self.model(y=batch["data_y"], q=batch["data_q"], metadata=batch["metadata"])
+        output = self.model(y=batch["data_y"], metadata=batch["metadata"])
         loss, recon_loss, kl_loss = self.compute_loss(batch, output)
         self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True)
         self.log('val_recon_loss', recon_loss, on_step=True, on_epoch=True, prog_bar=False)
@@ -89,3 +95,9 @@ class PlVAE(pl.LightningModule):
                 "interval": "epoch",
             },
         }
+
+    def get_data_q(self):
+        if hasattr(self, 'data_q'):
+            return self.data_q
+        else:
+            raise AttributeError("data_q is not set in PlVAE.")

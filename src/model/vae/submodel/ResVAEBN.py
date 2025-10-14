@@ -140,11 +140,7 @@ class ResVAEBN(nn.Module):
             z = layer(z)
         return z
 
-    def forward(self, y, q=None, metadata=None):
-        if self.strat == "y":
-            x = y
-        else:
-            raise ValueError("strat must be 'q' or 'y'")
+    def forward(self, y, metadata=None):
 
         if torch.isnan(x).any() or torch.isinf(x).any():
             raise RuntimeError("[ResVAEBN] NaN or inf detected in input x")

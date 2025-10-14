@@ -45,6 +45,9 @@ class PairHDF5Dataset(Dataset):
         self.data_y_les = self.hdf['data_y_les']
         self.csv_index = self.hdf['csv_index']
 
+
+        assert all(self.data_q_saxs.apply(lambda x: np.array_equal(x, self.data_q_saxs[0]))), "All data_q_saxs arrays must be identical"
+        assert all(self.data_q_les.apply(lambda x: np.array_equal(x, self.data_q_les[0]))), "All data_wavelength arrays must be identical"
         assert len(self.data_q_saxs) == len(self.data_y_saxs), "data_y_saxs and data_q_saxs must have the same length"
         assert len(self.data_q_les) == len(self.data_y_les), "data_y_saxs and data_q_saxs must have the same length"
         assert len(self.data_q_saxs) > 0 or len(self.data_y_saxs) > 0, (
@@ -218,6 +221,14 @@ class PairHDF5Dataset(Dataset):
             "q_les": self.transformer_q_les.to_dict(),
             "y_les": self.transformer_y_les.to_dict()
         }
+
+    def get_data_q_saxs(self):
+        """Return the original data_q_saxs array"""
+        return self.data_q_saxs
+
+    def get_data_q_les(self):
+        """Return the original data_q_les array"""
+        return self.data_q_les
 
 
 def _ensure_pipeline(transformer) -> Pipeline:
