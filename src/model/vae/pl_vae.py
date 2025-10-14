@@ -15,23 +15,24 @@ class PlVAE(pl.LightningModule):
         super().__init__()
         if config is None and not hasattr(self, 'config'):
             raise ValueError("Configuration dictionary is required for PlVAE.")
+        # print(f"[PlVAE] Initializing with config: {config}")
         if config is not None:
             self.config = config
         self.beta = config["training"]["beta"]
         model_class = self.config["model"]["vae_class"]
         self.model = MODEL_REGISTRY.get(model_class)(**self.config["model"]["args"])
-        if not force_dataset_q and "data_q" in self.config:
-            setattr(self, "data_q", self.config['model']["data_q"])
+        if not force_dataset_q and "data_q" in self.config["model"]:
+            setattr(self, "data_q", self.config["model"]["data_q"])
             print(f"[PlVAE] WARNING: Using data_q from config, not from dataloader!")
         else:
-            if force_dataset_q and "data_q" in self.config:
+            if force_dataset_q and "data_q" in self.config["model"]:
                 print(f"[PlVAE] INFO: Forcing use of data_q from dataloader (ignoring config)")
             else:
                 print(f"[PlVAE] WARNING: Using data_q from dataloader, not from config!")
 
     def forward(self, batch):
         """Forward pass delegating to the configured sub-model."""
-        return self.model(y=batch["data_y"], metadata=batch["metadata"]) + {"data_q" : self.data_q if hasattr(self, 'data_q') else batch["data_q"]}
+        return self.model(x=batch["data_y"], metadata=batch["metadata"]) | {"data_q" : self.data_q if hasattr(self, 'data_q') else batch["data_q"]}
 
     def decode(self, *args, **kwargs):
         return self.model.decode(*args, **kwargs)

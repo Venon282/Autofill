@@ -31,11 +31,11 @@ class PlPairVAE(pl.LightningModule):
         """Configure data_q settings with warnings about source."""
         for data_type in ["saxs", "les"]:
             config_key = f"data_q_{data_type}"
-            if not force_dataset_q and config_key in self.config:
+            if not force_dataset_q and config_key in self.config["model"]:
                 setattr(self, config_key, self.config['model'][config_key])
                 print(f"[PlVAE] WARNING: Using {config_key} from config, not from dataloader!")
             else:
-                if force_dataset_q and config_key in self.config:
+                if force_dataset_q and config_key in self.config["model"]:
                     print(f"[PlVAE] INFO: Forcing use of {config_key} from dataloader (ignoring config)")
                 else:
                     print(f"[PlVAE] WARNING: Using {config_key} from dataloader, not from config!")

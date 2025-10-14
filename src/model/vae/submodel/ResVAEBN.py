@@ -140,7 +140,7 @@ class ResVAEBN(nn.Module):
             z = layer(z)
         return z
 
-    def forward(self, y, metadata=None):
+    def forward(self, x, metadata=None):
 
         if torch.isnan(x).any() or torch.isinf(x).any():
             raise RuntimeError("[ResVAEBN] NaN or inf detected in input x")

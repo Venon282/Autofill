@@ -30,8 +30,8 @@ from src.model.vae.pl_vae import PlVAE
 from dotenv import load_dotenv
 load_dotenv()  # Charge les variables depuis .env
 
-PATH_TO_Q_SAXS = os.getenv("PATH_TO_Q_SAXS")
-PATH_TO_WL_LES = os.getenv("PATH_TO_WL_LES")
+# PATH_TO_Q_SAXS = os.getenv("PATH_TO_Q_SAXS")
+# PATH_TO_WL_LES = os.getenv("PATH_TO_WL_LES")
 
 def move_to_device(batch: Any, device: torch.device) -> Any:
     """Recursively move tensors to specified device."""
@@ -251,7 +251,8 @@ class ValidationMetricsCalculator:
                     transformer_y=self.config["transforms_data"]["y"],
                     metadata_filters=self.config["dataset"]["metadata_filters"],
                     conversion_dict=conversion_dict,
-                    requested_metadata=['length_nm', 'diameter_nm', 'concentration_original']
+                    requested_metadata=['length_nm', 'diameter_nm', 'concentration_original'],
+                    use_data_q=False
                 )
             else:
                 # VAE: LES dataset with LES transformations
@@ -262,7 +263,8 @@ class ValidationMetricsCalculator:
                     transformer_y=self.config["transforms_data"]["y"],
                     metadata_filters=self.config["dataset"]["metadata_filters"],
                     conversion_dict=conversion_dict,
-                    requested_metadata=['length_nm', 'diameter_nm', 'concentration']
+                    requested_metadata=['length_nm', 'diameter_nm', 'concentration'],
+                    use_data_q=False
                 )
             self.invert_transforms = self.dataset.invert_transforms_func()
         else:
@@ -276,7 +278,8 @@ class ValidationMetricsCalculator:
                     transformer_y=Pipeline(transform_config["y_les"]),
                     metadata_filters=self.config["dataset"]["metadata_filters"],
                     conversion_dict=conversion_dict,
-                    requested_metadata=['diameter_nm', 'length_nm', 'concentration_original', 'concentration'] 
+                    requested_metadata=['diameter_nm', 'length_nm', 'concentration_original', 'concentration'],
+                    use_data_q=False
                 )
                 output_transformer_q = Pipeline(transform_config["q_saxs"])
                 output_transformer_y = Pipeline(transform_config["y_saxs"])
@@ -289,7 +292,8 @@ class ValidationMetricsCalculator:
                     transformer_y=Pipeline(transform_config["y_les"]),
                     metadata_filters=self.config["dataset"]["metadata_filters"],
                     conversion_dict=conversion_dict,
-                    requested_metadata=['diameter_nm', 'length_nm', 'concentration_original', 'concentration'] 
+                    requested_metadata=['diameter_nm', 'length_nm', 'concentration_original', 'concentration'],
+                    use_data_q=False 
                 )
                 output_transformer_q = Pipeline(transform_config["q_les"])
                 output_transformer_y = Pipeline(transform_config["y_les"])
@@ -302,7 +306,8 @@ class ValidationMetricsCalculator:
                     transformer_y=Pipeline(transform_config["y_saxs"]),
                     metadata_filters=self.config["dataset"]["metadata_filters"],
                     conversion_dict=conversion_dict,
-                    requested_metadata=['diameter_nm', 'length_nm', 'concentration_original', 'concentration'] 
+                    requested_metadata=['diameter_nm', 'length_nm', 'concentration_original', 'concentration'],
+                    use_data_q=False 
                 )
                 output_transformer_q = Pipeline(transform_config["q_saxs"])
                 output_transformer_y = Pipeline(transform_config["y_saxs"])
@@ -315,7 +320,8 @@ class ValidationMetricsCalculator:
                     transformer_y=Pipeline(transform_config["y_saxs"]),
                     metadata_filters=self.config["dataset"]["metadata_filters"],
                     conversion_dict=conversion_dict,
-                    requested_metadata=['diameter_nm', 'length_nm', 'concentration_original', 'concentration'] 
+                    requested_metadata=['diameter_nm', 'length_nm', 'concentration_original', 'concentration'],
+                    use_data_q=False 
                 )
                 output_transformer_q = Pipeline(transform_config["q_les"])
                 output_transformer_y = Pipeline(transform_config["y_les"])
@@ -501,7 +507,7 @@ class ValidationMetricsCalculator:
                     recon = self._extract_reconstruction(outputs)
                     if recon is None:
                         continue
-                    q_pred = batch["data_q"].detach().cpu()
+                    q_pred = outputs['data_q'] if 'data_q' in outputs else batch.get('data_q')
                     # Vérité terrain toujours disponible pour VAE
                     true_values = batch["data_y"].detach().cpu().squeeze(1)
                 else:
@@ -525,13 +531,13 @@ class ValidationMetricsCalculator:
                 if q_pred.ndim == 3:
                     q_pred = q_pred.squeeze(1)
 
-                recon_inverted, _ = self.invert_transforms(recon.detach().cpu(), q_pred.detach().cpu())
+                recon_inverted, _ = self.invert_transforms(recon.detach().cpu(), q_pred)
                 # Q come from model input, no need to invert
-                q_inverted = q_pred.detach().cpu().numpy()
+                q_inverted = q_pred
 
                 # Vérité terrain 
                 if true_values is not None:
-                    true_inverted, q_true_inverted = self.invert_transforms(true_values, q_pred.detach().cpu())
+                    true_inverted, q_true_inverted = self.invert_transforms(true_values, q_pred)
                 else:
                     true_inverted, q_true_inverted = None, None
 
@@ -539,13 +545,15 @@ class ValidationMetricsCalculator:
                 
                 diameter_key = 'diameter_nm'
                 length_key = 'length_nm'
-                if self.mode in ['les_to_saxs', 'les_to_les']:
-                    concentration_key = 'concentration'
-                else:
-                    concentration_key = 'concentration_original'
-                
-                if not (diameter_key in meta and concentration_key in meta):
-                    raise ValueError(f"Need '{diameter_key}' and '{concentration_key}' in metadata : {meta} for Fit metrics.")
+                try:
+                    concentration_key = next(k for k in ['concentration', 'concentration_original'] if k in meta)
+                    concentration = meta[concentration_key]
+                    diameter = meta[diameter_key]
+                except (KeyError, StopIteration) as e:
+                    raise ValueError(
+                        f"Need '{diameter_key}' and either 'concentration' or 'concentration_original' "
+                        f"in metadata: {meta} for Fit metrics."
+                    ) from e
 
                 diam_true = meta[diameter_key].detach().cpu().numpy()
                 length_true = meta[length_key].detach().cpu().numpy()
@@ -554,10 +562,10 @@ class ValidationMetricsCalculator:
                 for i in range(recon_inverted.shape[0]):
                     # Predicted data
                     y_pred = recon_inverted[i].numpy()
-                    q_pred = q_inverted[i].numpy()
+                    q_pred = q_inverted[i]
 
                     # True data (control)
-                    if true_inverted is not None:
+                    if true_inverted is not None and q_true_inverted is not None:
                         y_true = true_inverted[i].numpy()
                         q_true = q_true_inverted[i].numpy()
 
@@ -566,7 +574,7 @@ class ValidationMetricsCalculator:
                     t_c = float(conc_true[i]) if np.ndim(conc_true) > 0 else float(conc_true)
 
                     pred_samples.append((y_pred, q_pred, t_d, t_l, t_c))
-                    if true_inverted is not None:
+                    if true_inverted is not None and q_true_inverted is not None:
                         true_samples.append((y_true, q_true, t_d, t_l, t_c))
 
         if not pred_samples:
@@ -576,7 +584,7 @@ class ValidationMetricsCalculator:
         if true_samples:
             print(f"  Fitting {len(true_samples)} samples on ground truth (control)... using {self.n_processes} cpus")
 
-        if self.mode in ['les_to_saxs', 'saxs_to_saxs']:
+        if self.mode in ['les_to_saxs', 'saxs_to_saxs'] or self.model_type == 'vae':
             pred_fit_args = [(sample, self.qmin_fit, self.qmax_fit, self.factor_scale_to_conc, use_first_n_points)
                             for sample in pred_samples]
             true_fit_args = [(sample, self.qmin_fit, self.qmax_fit, self.factor_scale_to_conc, use_first_n_points)
@@ -864,9 +872,9 @@ def parse_args():
     parser.add_argument("-cd", "--conversion_dict", help="Metadata conversion file")
 
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
-    parser.add_argument("--eval_percentage", type=float, default=0.05,
+    parser.add_argument("--eval_percentage", type=float, default=0.005,
                        help="% dataset for reconstruction metrics")
-    parser.add_argument("--fit_percentage", type=float, default=0.05,
+    parser.add_argument("--fit_percentage", type=float, default=0.005,
                        help="% dataset for Fit")
 
     parser.add_argument("--qmin_fit", type=float, default=0.001, help="Q min fitting")
