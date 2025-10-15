@@ -307,12 +307,12 @@ class BaseValidationEngine(ABC):
         if not pred_samples:
             raise ValueError("No prediction samples available for fit metrics.")
         
-        print(f"Collecting fit samples using {self.n_processes} processes...")
-        
+        print(f"Collecting fit samples using {self.n_processes} processes...", flush=True)
+
         pred_results = Parallel(n_jobs=self.n_processes)(
             delayed(metric.safe_fit_single)(sample) for sample in pred_samples
         )
-        if true_samples is not []:
+        if true_samples:
             true_results = (
                 Parallel(n_jobs=self.n_processes)(
                     delayed(metric.safe_fit_single)(sample) for sample in true_samples
