@@ -32,13 +32,14 @@ class PlPairVAE(pl.LightningModule):
         for data_type in ["saxs", "les"]:
             config_key = f"data_q_{data_type}"
             if not force_dataset_q and config_key in self.config["model"]:
+                assert  self.config['model'][config_key] is not None, f"{config_key} in config cannot be None if used."
                 setattr(self, config_key, self.config['model'][config_key])
-                print(f"[PlVAE] WARNING: Using {config_key} from config, not from dataloader!")
+                print(f"[PlPairVAE] WARNING: Using {config_key} from config!")
             else:
                 if force_dataset_q and config_key in self.config["model"]:
-                    print(f"[PlVAE] INFO: Forcing use of {config_key} from dataloader (ignoring config)")
+                    print(f"[PlPairVAE] INFO: Forcing use of {config_key} from dataloader (ignoring config)")
                 else:
-                    print(f"[PlVAE] WARNING: Using {config_key} from dataloader, not from config!")
+                    print(f"[PlPairVAE] WARNING: Using {config_key} from dataloader!")
 
     def forward(self, batch):
         return self.model(batch)
@@ -131,25 +132,24 @@ class PlPairVAE(pl.LightningModule):
         les_batch, _ = self._prepare_batch(batch, 'les')
         output_les = self.model.vae_les(les_batch)
         recon_les2saxs = self.model.vae_saxs.decode(output_les["z"])
-        return recon_les2saxs, self.get_data_q_saxs()
-
+        return recon_les2saxs, self.get_data_q_saxs() if hasattr(self, 'data_q_saxs') else data_q
     def saxs_to_les(self, batch):
         saxs_batch, _ = self._prepare_batch(batch, 'saxs')
         output_saxs = self.model.vae_saxs(saxs_batch)
         recon_saxs2les = self.model.vae_les.decode(output_saxs["z"])
-        return recon_saxs2les, self.get_data_q_les()
+        return recon_saxs2les, self.get_data_q_les() if hasattr(self, 'data_q_les')else data_q
 
     def saxs_to_saxs(self, batch):
         saxs_batch, data_q = self._prepare_batch(batch, 'saxs')
         output_saxs = self.model.vae_saxs(saxs_batch)
         recon_saxs2saxs = self.model.vae_saxs.decode(output_saxs["z"])
-        return recon_saxs2saxs, data_q
+        return recon_saxs2saxs, self.get_data_q_saxs() if hasattr(self, 'data_q_saxs') else data_q
 
     def les_to_les(self, batch):
         les_batch, data_q = self._prepare_batch(batch, 'les')
         output_les = self.model.vae_les(les_batch)
         recon_les2les = self.model.vae_les.decode(output_les["z"])
-        return recon_les2les, data_q
+        return recon_les2les, self.get_data_q_les() if hasattr(self, 'data_q_les') else data_q
 
     @staticmethod
     def _validate_batch(batch, y_key: str) -> None:
@@ -162,10 +162,22 @@ class PlPairVAE(pl.LightningModule):
     def get_transforms_data_saxs(self):
         return self.model.get_saxs_config()["transforms_data"]
 
+    # def get_data_q_saxs(self):
+    #     """Return the original data_q_saxs array"""
+    #     return self.data_q_saxs
+
+    # def get_data_q_les(self):
+    #     """Return the original data_q_les array"""
+    #     return self.data_q_les
+
     def get_data_q_saxs(self):
-        """Return the original data_q_saxs array"""
-        return self.data_q_saxs
+        if hasattr(self, 'data_q_saxs'):
+            return self.data_q_saxs
+        else:
+            raise AttributeError("data_q_saxs is not set. Please ensure it is provided in the dataloader or config.")
 
     def get_data_q_les(self):
-        """Return the original data_q_les array"""
-        return self.data_q_les
+        if hasattr(self, 'data_q_les'):
+            return self.data_q_les
+        else:
+            raise AttributeError("data_q_les is not set. Please ensure it is provided in the dataloader or config.")

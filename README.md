@@ -255,7 +255,7 @@ Les sorties sont placées dans le dossier indiqué, au format `.npy` (shape `[pa
 Après l’inférence, utilisez `scripts/06_val_metrics.py` pour consolider les performances du modèle et générer un rapport reproductible. Le script charge un checkpoint Lightning (`.ckpt`), parcourt un HDF5 et calcule :
 
 - des métriques de reconstruction (MAE, MSE, RMSE, R²) sur un sous-ensemble aléatoire du dataset ;
-- des ajustements physiques via SASFit (diamètre, longueur et concentration) pour un petit échantillon, avec comparaison optionnelle à la vérité terrain.
+- des ajustements physiques via SASFit ou le solveur LES (diamètre, longueur et concentration) pour un petit échantillon, avec comparaison optionnelle à la vérité terrain.
 
 ```bash
 python scripts/06_val_metrics.py \
@@ -264,21 +264,22 @@ python scripts/06_val_metrics.py \
   --conversion_dict data/metadata_dict.json \
   --outputdir outputs/vae_metrics \
   --eval_percentage 0.1 \
-  --sasfit_percentage 0.005
+  --fit_percentage 0.005
 ```
 
 Points importants :
 
 - **VAE** : fournissez uniquement `--checkpoint`, `--data_path`, `--conversion_dict` et `--outputdir`.
-- **PairVAE** : ajoutez `--mode` (`les_to_saxs` ou `saxs_to_saxs`) pour préciser le domaine de sortie évalué ; les autres modes ne possèdent pas de vérité terrain adaptée pour les reconstructions.
-- Ajustez `--eval_percentage` (reconstruction) et `--sasfit_percentage` (SASFit) selon la taille du dataset : 0.05 représente 5 % des échantillons.
-- Pour accélérer SASFit, fixez `--n_processes` à un nombre de cœurs adaptés ; par défaut, le script utilise *n_cpu - 1*.
+- **PairVAE** : ajoutez `--mode` (`les_to_saxs`, `saxs_to_saxs`, `les_to_les` ou `saxs_to_les`) pour préciser le domaine d’évaluation. Les métriques de reconstruction ne sont disponibles que lorsque l’entrée et la sortie appartiennent au même domaine (`les_to_les`, `saxs_to_saxs`).
+- Ajustez `--eval_percentage` (reconstruction) et `--fit_percentage` (ajustements physiques) selon la taille du dataset : `0.05` représente 5 % des échantillons.
+- Pour accélérer les fits, fixez `--n_processes` à un nombre de cœurs adaptés ; par défaut, le script utilise *n_cpu - 1* grâce à `joblib.Parallel`.
 
 Les résultats sont écrits dans `--outputdir` :
 
-- `validation_metrics.yaml` récapitule toutes les métriques et la configuration utilisée ;
-- `metrics_summary.txt` propose un résumé prêt à partager ;
-- `reconstruction_metrics_detailed.csv` contient les scores par échantillon lorsque des reconstructions ont été calculées.
+- `validation_metrics.yaml` récapitule toutes les métriques, les métadonnées et l’état des traitements ;
+- `metrics_summary.txt` propose un résumé prêt à partager avec le statut des reconstructions et le détail des échantillons réussis/échoués ;
+- `reconstruction_metrics_detailed.csv` contient les scores par échantillon lorsque des reconstructions ont été calculées ;
+- `fit_detailed_results.csv` liste les ajustements individuels (prédictions et vérités terrain) lorsqu’ils sont disponibles.
 
 Pour des explorations plus avancées (recherche de grilles, comparaison de modèles), consultez la section [Expert: Grid Search](#expert-grid-search).
 
