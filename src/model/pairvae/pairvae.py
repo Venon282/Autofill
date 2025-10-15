@@ -22,9 +22,9 @@ class PairVAE(nn.Module):
         """Return reconstructions and latent representations for paired inputs."""
 
         metadata = batch["metadata"]
-        batch_saxs = {"data_y": batch["data_y_saxs"], "data_q": batch["data_q_saxs"], "metadata": metadata}
+        batch_saxs = {"data_y": batch["data_y_saxs"], "metadata": metadata}
         output_saxs = self.vae_saxs(batch_saxs)
-        batch_les = {"data_y": batch["data_y_les"], "data_q": batch["data_q_les"], "metadata": metadata}
+        batch_les = {"data_y": batch["data_y_les"], "metadata": metadata}
         output_les = self.vae_les(batch_les)
         recon_les2saxs = self.vae_saxs.decode(output_les["z"])
         recon_saxs2les = self.vae_les.decode(output_saxs["z"])
