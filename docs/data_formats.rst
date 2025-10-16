@@ -11,7 +11,7 @@ including HDF5 file structures, JSON metadata dictionaries, and CSV layouts.
 HDF5 data files
 ---------------
 
-The AutoFill pipeline uses HDF5 files to store preprocessed time series data
+The AutoFill pipeline uses HDF5 files to store preprocessed signals data
 along with associated metadata. These files are produced by the conversion
 scripts and consumed by the training and inference utilities.
 
@@ -90,12 +90,13 @@ modality training. The structure extends the single-modality format to
 accommodate two related datasets.
 
 You will have two options:
-- If you have a pairing file that contains paths to the new TXT SAXS and TXT LES data, use PairTextToHDF5Converter.
-This option should be used when you have new SAXS and LES datasets to avoid data leakage — meaning the individual VAEs have not seen this data before.
-The pairing file should be a panda dataframe with columns `saxs_path` and `les_path`. This paths should point to unseen txt files.
-- If you want to use the same datasets for training both the VAE and the PairVAE, use PairingHDF5Converter.
-This converter creates data splits (training/validation) before training the VAEs. These same splits are then reused for training the PairVAE, ensuring that training and validation subsets never overlap.
-The splits are save as `.npy` files that you need to inform in the `.yaml` training files as `array_train_indices` and `array_val_indices`.
+    - If you have a pairing file that contains paths to the new TXT SAXS and TXT LES data, use PairTextToHDF5Converter.
+    This option should be used when you have new SAXS and LES datasets to avoid data leakage — meaning the individual VAEs have not seen this data before.
+    The pairing file should be a panda dataframe with columns `saxs_path` and `les_path`. 
+
+    - If you want to use the same datasets for training both the VAE and the PairVAE, use PairingHDF5Converter.
+    This converter creates data splits (training/validation) before training the VAEs. These same splits are then reused for training the PairVAE, ensuring that training and validation subsets never overlap.
+    The splits are save as `.npy` files that you need to inform in the `.yaml` training files as `array_train_indices` and `array_val_indices`.
 
 **File structure:**
 

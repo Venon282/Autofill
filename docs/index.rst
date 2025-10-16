@@ -30,9 +30,9 @@ Quick start
    :caption: User guide
 
    getting_started
-   tutorials
-   configuration
    data_formats
+   configuration
+   tutorials
 
 .. toctree::
    :maxdepth: 2
