@@ -322,7 +322,7 @@ class BaseValidationEngine(ABC):
             )
         else:
             true_results = []
-        if not all(r is not None for r in pred_results):
+        if all(r is None for r in pred_results):
             raise ValueError("All prediction fit attempts failed.")
 
         return self._aggregate_fit_results(pred_results, true_results)

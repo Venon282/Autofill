@@ -37,7 +37,6 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     """Entry point for validation script."""
 
-    load_dotenv()
     args = parse_args()
 
     engine = ValidationEngine(
