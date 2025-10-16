@@ -471,40 +471,44 @@ recover physical parameters.
      --conversion_dict data/metadata_dict.json \
      --outputdir outputs/vae_metrics \
      --eval_percentage 0.10 \
-     --sasfit_percentage 0.005
+     --fit_percentage 0.005
 
 **Arguments**
 
 * ``--checkpoint`` – checkpoint produced in Step 3 or Step 5.
 * ``--data_path`` – HDF5 dataset used for evaluation.
-* ``--outputdir`` – folder where metric summaries and optional SASFit results
-  are written.
-* ``--mode`` – required for PairVAE checkpoints; choose ``les_to_saxs`` or
-  ``saxs_to_saxs`` to compare reconstructions against ground truth.
+* ``--outputdir`` – folder where metric summaries and fit details are
+  written.
+* ``--mode`` – required for PairVAE checkpoints; choose ``les_to_saxs``,
+  ``saxs_to_saxs``, ``les_to_les`` or ``saxs_to_les`` to control the
+  evaluation direction. Reconstruction metrics are only produced when the
+  input and output domains match (``les_to_les`` ou ``saxs_to_saxs``).
 * ``--conversion_dict`` – same JSON produced during conversion; required to
   decode categorical labels.
 * ``--eval_percentage`` – fraction of samples evaluated when computing MAE, MSE,
   RMSE, and R² (``0.10`` = 10%).
-* ``--sasfit_percentage`` – fraction of samples passed to SASFit. Keep it small
-  because curve fitting is slow.
-* ``--n_processes`` – optional cap on the number of parallel SASFit workers.
+* ``--fit_percentage`` – fraction of samples passed to the physical fit (SASFit
+  ou LES). Keep it small because curve fitting is slow.
+* ``--n_processes`` – optional cap on the number of parallel workers. By
+  default, the script utilise ``joblib.Parallel`` avec ``n_cpu - 1``.
 * ``--random_state`` – ensures reproducible sampling between runs.
 
 **Outputs**
 
 * ``validation_metrics.yaml`` – machine-readable metrics alongside the training
-  hyperparameters.
-* ``metrics_summary.txt`` – human-readable recap of the evaluation.
-* ``reconstruction_metrics_detailed.csv`` – per-sample scores when reconstructions
-  are available.
-* ``sasfit_results`` directory (optional) – contains fitted parameters and CSV
-  dumps created when SASFit is enabled.
+  hyperparameters et l’état de chaque étape.
+* ``metrics_summary.txt`` – human-readable recap of the evaluation, incluant le
+  statut des reconstructions et le nombre d’échecs lors des fits.
+* ``reconstruction_metrics_detailed.csv`` – per-sample scores when
+  reconstructions are available.
+* ``fit_detailed_results.csv`` – fitted parameters and absolute errors for each
+  processed sample.
 
 .. tip::
    **Tips**
 
-   * If SASFit is not installed, run the script without ``--sasfit_percentage`` or
-     set it to ``0``.
+   * Si SASFit n’est pas installé, lancez le script avec ``--fit_percentage 0``
+     pour ignorer les ajustements physiques.
    * Lower ``--eval_percentage`` if you are prototyping and want faster feedback.
 
 Step 8 – (Optional) Run a grid search

@@ -155,7 +155,7 @@ class VAEInferencer(BaseInferencer):
                 batch = move_to_device(batch, self.device)
                 outputs = self.model(batch)
                 y_pred = outputs["recon"]
-                q_pred = batch['data_q']
+                q_pred = outputs['data_q']
                 y_pred, q_pred = self.invert(y_pred, q_pred)
                 metadata_batch = batch["metadata"]
                 for i in range(len(y_pred)):
@@ -180,6 +180,7 @@ class VAEInferencer(BaseInferencer):
                 transformer_y=transforms_y,
                 metadata_filters=self.config["dataset"]["metadata_filters"],
                 conversion_dict=self.conversion_dict,
+                use_data_q=False
             )
             self.format = 'h5'
             self.invert = self.dataset.invert_transforms_func()
@@ -285,7 +286,8 @@ class PairVAEInferencer(BaseInferencer):
                 conversion_dict=self.conversion_dict,
                 transformer_q=input_transformers['q'],
                 transformer_y=input_transformers['y'],
-                requested_metadata=['diameter_nm', 'length_nm', 'concentration_original', 'concentration'] 
+                requested_metadata=['diameter_nm', 'length_nm', 'concentration_original', 'concentration'],
+                    use_data_q=False 
             )
             self.format = 'h5'
         elif self.data_path.endswith(".csv"):

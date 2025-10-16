@@ -106,7 +106,10 @@ class TrainPipeline:
         return log_path
 
     def _initialize_components(self):
-        """Instantiate model, dataset, and callbacks based on the configuration."""
+        """Instantiate model, dataset, and callbacks based on the configuration.
+
+        This function modifies self.config in place to add data transformations and q values for save in hyperparameters.
+        """
         model_type = self.config['model']['type']
         common_cfg = {
             'num_samples': self.config['training'].get('num_samples', 10),
@@ -125,10 +128,15 @@ class TrainPipeline:
                                       transformer_y_saxs=Pipeline(transform_saxs["y"]),
                                       transformer_q_les=Pipeline(transform_les["q"]),
                                       transformer_y_les=Pipeline(transform_les["y"]))
+            # Save the data_q used for training in the config for hyperparameter logging
+            self.config['model']['data_q_saxs'] = dataset.get_data_q_saxs()
+            self.config['model']['data_q_les'] = dataset.get_data_q_les()
+
             curves_config = {
                 'saxs': {'truth_key': 'data_y_saxs', 'pred_keys': ['recon_saxs', 'recon_les2saxs'], 'use_loglog': True},
                 'les': {'truth_key': 'data_y_les', 'pred_keys': ['recon_les', 'recon_saxs2les']}
             }
+
         elif model_type.lower() == 'vae':
             model = PlVAE(self.config)
             transform_config = self.config.get('transforms_data', {})
@@ -142,6 +150,9 @@ class TrainPipeline:
             dataset = HDF5Dataset(**ds_cfg,
                                   transformer_q=Pipeline(transform_config["q"]),
                                   transformer_y=Pipeline(transform_config["y"]))
+            # Save the data_q used for training in the config for hyperparameter logging
+            self.config['model']['data_q'] = dataset.get_data_q()
+
             curves_config = {'recon': {'truth_key': 'data_y', 'pred_keys': ["recon"],
                                        'use_loglog': self.config['training']['use_loglog']}}
             callbacks.append(MAEMetricCallback())
