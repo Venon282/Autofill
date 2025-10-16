@@ -228,6 +228,7 @@ class PairVAEInferencer(BaseInferencer):
             raise ValueError(f"Invalid mode '{mode}'. Expected one of {sorted(valid_modes)}.")
         self.mode = mode
         super().__init__(output_dir, save_plot, checkpoint_path, hparams, data_path, conversion_dict_path, sample_frac, batch_size, data_dir)
+        self.use_loglog =  True if self.mode in ["saxs_to_saxs", "les_to_saxs"] else False
 
     def load_model(self, path: str):
         return PlPairVAE.load_from_checkpoint(checkpoint_path=path)
@@ -252,7 +253,7 @@ class PairVAEInferencer(BaseInferencer):
                 for i in range(len(y_pred)):
                     metadata = {k: metadata_batch[k][i] for k in metadata_batch}
                     y_arr = y_pred[i].detach().cpu().numpy().flatten()
-                    q_arr = q_pred[i].detach().cpu().numpy().flatten()
+                    q_arr = q_pred
                     y_arrs = {self.mode: y_arr}
                     self.save_pred(batch, i, q_arr, y_arrs, metadata)
 

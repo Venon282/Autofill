@@ -4,9 +4,10 @@
 import argparse
 import os
 import sys
-from dotenv import load_dotenv
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from src.validation import ValidationEngine
+
+from src.validation.engine import ValidationEngine
 from src.validation.utils.utils import display_validation_results
 from pprint import pprint
 

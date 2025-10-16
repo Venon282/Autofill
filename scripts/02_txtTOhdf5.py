@@ -26,7 +26,7 @@ class TextToHDF5Converter:
         output_dir: str | os.PathLike[str],
         pad_size: int = 90,
         hdf_cache: int = 100_000,
-        final_output_file: str = "final_output.h5",
+        output_hdf5_filename: str = "final_output.h5",
         exclude: Iterable[str] = ("path", "researcher", "date"),
         json_output: str = "conversion_dict.json",
     ) -> None:
@@ -40,7 +40,7 @@ class TextToHDF5Converter:
         self.conversion_dict = {
             col: {} for col in self.metadata_cols if dataframe[col].dtype == object
         }
-        final_output = Path(final_output_file)
+        final_output = Path(output_hdf5_filename)
         self.final_output_path = (
             final_output
             if final_output.is_absolute()
@@ -236,7 +236,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--data_csv_path", type=str, required=True, help="Path to the metadata CSV file.")
     parser.add_argument("--data_dir", type=str, required=True, help="Directory containing the raw TXT files.")
     parser.add_argument("--pad_size", type=int, default=500, help="Padding length applied to each curve.")
-    parser.add_argument("--final_output_file", type=str, required=True, help="Destination HDF5 filename.")
+    parser.add_argument("--output_hdf5_filename", type=str, required=True, help="Destination HDF5 filename.")
     parser.add_argument(
         "--json_output",
         type=str,
@@ -260,8 +260,8 @@ def main() -> None:
     converter = TextToHDF5Converter(
         dataframe=dataframe,
         data_dir=args.data_dir,
-        output_dir=os.path.dirname(args.final_output_file) or ".",
-        final_output_file=os.path.basename(args.final_output_file),
+        output_dir=os.path.dirname(args.output_hdf5_filename) or ".",
+        output_hdf5_filename=os.path.basename(args.output_hdf5_filename),
         json_output=args.json_output,
         pad_size=args.pad_size,
     )

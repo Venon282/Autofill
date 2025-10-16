@@ -230,6 +230,8 @@ class PairTextToHDF5Converter:
         print(f"Metadata dictionary written to: {self.json_output_path}")
 
 class PairingHDF5Converter:
+    """Convert HDF5 LES and SAXS files into a single HDF5 dataset with splits."""
+
     def __init__(self, saxs_hdf5_path, les_hdf5_path, dir_output, output_hdf5_filename, split_train_ratio=0.8):
 
         self.hdf_saxs = h5py.File(saxs_hdf5_path, 'r', swmr=True)
@@ -359,6 +361,7 @@ class PairingHDF5Converter:
             f_out.create_dataset('csv_index_les', data=csv_index_les_list)
 
     def convert(self):
+        """Execute the concatenation and save both HDF5 file and npy split files."""
 
         dict_saxs, dict_saxs_y_values, dict_saxs_q_values, dict_les, dict_les_y_values, dict_les_q_values = self._extract_data()
         paires_saxs_les = self._split_dataset(dict_saxs, dict_les)

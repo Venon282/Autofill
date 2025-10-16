@@ -183,23 +183,32 @@ class TrainPipeline:
 
     def _create_data_loaders(self):
         """Construct train and validation data loaders from saved CSV indices."""
-        train_csv_indices_saxs_les = np.load(self.config['training']['array_train_indices'], allow_pickle=True)
-        val_csv_indices_saxs_les = np.load(self.config['training']['array_val_indices'], allow_pickle=True)
+        if self.config['training']['array_train_indices'] is not None and self.config['training']['array_val_indices'] is not None:
+            train_csv_indices_saxs_les = np.load(self.config['training']['array_train_indices'], allow_pickle=True)
+            val_csv_indices_saxs_les = np.load(self.config['training']['array_val_indices'], allow_pickle=True)
 
-        if self.config['model']['type'].lower() == 'vae':
-            if  "saxs" in self.config['run_name']:
-                train_csv_indices = [pair[1] for pair in train_csv_indices_saxs_les]
-                val_csv_indices = [pair[1] for pair in val_csv_indices_saxs_les]
-            elif "les" in self.config['run_name'] :
-                train_csv_indices = [pair[2] for pair in train_csv_indices_saxs_les]
-                val_csv_indices = [pair[2] for pair in val_csv_indices_saxs_les]
-        
-        elif self.config['model']['type'].lower() == 'pair_vae':
-            train_csv_indices = [pair[0] for pair in train_csv_indices_saxs_les]
-            val_csv_indices = [pair[0] for pair in val_csv_indices_saxs_les]
+            if self.config['model']['type'].lower() == 'vae':
+                if  "saxs" in self.config['run_name']:
+                    train_csv_indices = [pair[1] for pair in train_csv_indices_saxs_les]
+                    val_csv_indices = [pair[1] for pair in val_csv_indices_saxs_les]
+                elif "les" in self.config['run_name'] :
+                    train_csv_indices = [pair[2] for pair in train_csv_indices_saxs_les]
+                    val_csv_indices = [pair[2] for pair in val_csv_indices_saxs_les]
+            
+            elif self.config['model']['type'].lower() == 'pair_vae':
+                train_csv_indices = [pair[0] for pair in train_csv_indices_saxs_les]
+                val_csv_indices = [pair[0] for pair in val_csv_indices_saxs_les]
 
-        train_dataset = build_subset(self.dataset, train_csv_indices)
-        validation_subset   = build_subset(self.dataset, val_csv_indices)
+            train_dataset = build_subset(self.dataset, train_csv_indices)
+            validation_subset   = build_subset(self.dataset, val_csv_indices)
+
+        else:
+            total_samples = len(self.dataset)
+            train_count = int(0.8 * total_samples)
+            validation_count = total_samples - train_count
+            if self.verbose:
+                print(f"[Data] Splitting dataset: train={train_count}, validation={validation_count}")
+            train_dataset, validation_subset = random_split(self.dataset, [train_count, validation_count])
 
         batch_size = self.config['training']['batch_size']
         num_workers = self.config['training']['num_workers']

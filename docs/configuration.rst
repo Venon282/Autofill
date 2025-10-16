@@ -260,7 +260,8 @@ Basic training parameters
     Maximum number of training epochs.
 
 ``array_train_indices``, ``array_val_indices`` (string, required)
-    Paths to NumPy files containing train/validation split indices.
+    Paths to NumPy files containing train/validation split indices. 
+    If None, the HDF5 file will be split 80%/20%. Using data already used in training VAE to train PairVAE may therefore lead to Data Leak.
 
 ``batch_size`` (int, default: 32)
     Training batch size.

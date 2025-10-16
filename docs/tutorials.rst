@@ -61,6 +61,8 @@ Step 2 – Convert TXT files to HDF5 for the VAE
 **Why this matters:** the neural networks expect a fixed-size HDF5 dataset
 rather than loose text files.
 
+Please study step 3 before training VAE in order to prepare the data for PairVAE.
+
 **Command**
 
 .. code-block:: bash
@@ -68,7 +70,7 @@ rather than loose text files.
    python scripts/02_txtTOhdf5.py \
      --data_csv_path data/metadata_clean.csv \
      --data_dir data/txt/ \
-     --final_output_file data/all_data.h5 \
+     --output_hdf5_filename data/all_data.h5 \
      --json_output data/metadata_dict.json \
      --pad_size 900
 
@@ -77,7 +79,7 @@ rather than loose text files.
 * ``--data_csv_path`` – path to the cleaned CSV from Step 1.
 * ``--data_dir`` – folder containing the raw ``.txt`` curves referenced in the
   CSV ``path`` column.
-* ``--final_output_file`` – destination for the generated HDF5 file. The parent
+* ``--output_hdf5_filename`` – destination for the generated HDF5 file. The parent
   folders will be created automatically.
 * ``--json_output`` – filename that will store the categorical metadata mapping
   (used later by the models to decode labels).
@@ -100,7 +102,66 @@ rather than loose text files.
    * A pad size that is too small will crop information; too large may slow down
      training. Start with 900 for SAXS data.
 
-Step 3 – Train the VAE
+Step 3 – Convert TXT files for PairVAE or split HDF5 SAXS files
+---------------------------------------------------------------
+
+**Why this matters:** PairVAE requires paired inputs (e.g. LES and SAXS) stored
+in a single HDF5 file.
+
+**Command**
+
+If you have a pairing file that contains paths to the new TXT SAXS and TXT LES data, use PairTextToHDF5Converter.
+This option should be used when you have new SAXS and LES datasets to avoid data leakage — meaning the individual VAEs have not seen this data before.
+The pairing file should be a panda dataframe with columns `saxs_path` and `les_path`. This paths should point to unseen txt files.
+
+.. code-block:: bash
+
+   python scripts/04_prepare_pairdataset.py \
+     --data_csv_path data/metadata_clean.csv \
+     --data_dir data/txt/ \
+     --output_hdf5_filename data/pair_all_data.h5 \
+     --json_output data/pair_metadata_dict.json \
+     --pad_size 900
+
+If you want to use the same datasets for training both the VAE and the PairVAE, use PairingHDF5Converter.
+This converter creates data splits (training/validation) before training the VAEs. These same splits are then reused for training the PairVAE, ensuring that training and validation subsets never overlap.
+The splits are save as `.npy` files that you need to inform in the `.yaml` training files as `array_train_indices` and `array_val_indices` for BOTH VAE trainign and PairVAE training to ensure that the rights splits are always used.
+
+.. code-block:: bash
+
+   python scripts/04_prepare_pairdataset.py \
+     --saxs_hdf5_path cylinder_saxs_library_no_noise_meta_diameter.h5 \
+     --les_hdf5_path cylinder_les_meta.h5 \
+     --dir_output pairvae_dataset \
+     --output_hdf5_filename pair_all_data.hdf5
+
+**Arguments**
+
+* ``--data_csv_path`` – CSV containing metadata for both modalities. It can be
+  the same file as Step 1 if paired paths are present.
+* ``--sep`` – optional delimiter override if the CSV is not comma-separated.
+* ``--data_dir`` – directory with the text files referenced by the CSV.
+* ``--output_hdf5_filename`` – target HDF5 file holding both modalities.
+* ``--json_output`` – metadata mapping dedicated to the paired dataset.
+* ``--pad_size`` – shared padding applied to both modalities.
+
+**Outputs**
+
+* ``data/pair_all_data.h5`` – HDF5 dataset containing paired arrays and helper
+  metadata.
+* ``data/pair_metadata_dict.json`` – categorical mapping aligned with the paired
+  dataset.
+* Console logs indicating where the files were written and how many pairs were
+  processed.
+
+.. tip::
+   **Tips**
+
+   * When combining modalities, keep a consistent folder structure so both files in
+     a pair can be found relative to ``--data_dir``.
+   * Use a pad size that accommodates the longest modality to avoid truncation.
+
+Step 4 – Train the VAE
 ----------------------
 
 **Why this matters:** trains a Variational Autoencoder that can reconstruct a
@@ -301,48 +362,6 @@ Generated plots include:
    * Monitor training with: ``tensorboard --logdir=train_results``
    * Check your HDF5 file structure matches your configuration parameters
 
-Step 4 – Convert TXT files for PairVAE
---------------------------------------
-
-**Why this matters:** PairVAE requires paired inputs (e.g. LES and SAXS) stored
-in a single HDF5 file.
-
-**Command**
-
-.. code-block:: bash
-
-   python scripts/04_pair_txtTOhdf5.py \
-     --data_csv_path data/metadata_clean.csv \
-     --data_dir data/txt/ \
-     --final_output_file data/pair_all_data.h5 \
-     --json_output data/pair_metadata_dict.json \
-     --pad_size 900
-
-**Arguments**
-
-* ``--data_csv_path`` – CSV containing metadata for both modalities. It can be
-  the same file as Step 1 if paired paths are present.
-* ``--sep`` – optional delimiter override if the CSV is not comma-separated.
-* ``--data_dir`` – directory with the text files referenced by the CSV.
-* ``--final_output_file`` – target HDF5 file holding both modalities.
-* ``--json_output`` – metadata mapping dedicated to the paired dataset.
-* ``--pad_size`` – shared padding applied to both modalities.
-
-**Outputs**
-
-* ``data/pair_all_data.h5`` – HDF5 dataset containing paired arrays and helper
-  metadata.
-* ``data/pair_metadata_dict.json`` – categorical mapping aligned with the paired
-  dataset.
-* Console logs indicating where the files were written and how many pairs were
-  processed.
-
-.. tip::
-   **Tips**
-
-   * When combining modalities, keep a consistent folder structure so both files in
-     a pair can be found relative to ``--data_dir``.
-   * Use a pad size that accommodates the longest modality to avoid truncation.
 
 Step 5 – Train the PairVAE
 --------------------------
@@ -455,7 +474,7 @@ checkpoint and saves the results for inspection.
    * If you request ``--plot`` but see no figures, make sure Matplotlib is
      installed in your environment.
 
-Step 7 – Compute validation metrics and SASFit analysis
+Step 7 – Compute validation metrics and SASFit/LES analysis
 -------------------------------------------------------
 
 **Why this matters:** summarises model quality and optionally runs SASFit to
@@ -472,6 +491,7 @@ recover physical parameters.
      --outputdir outputs/vae_metrics \
      --eval_percentage 0.10 \
      --fit_percentage 0.005
+     --mode les_to_saxs
 
 **Arguments**
 

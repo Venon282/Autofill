@@ -85,9 +85,17 @@ simple so that it can be explored with tools such as ``h5ls`` or ``h5py``.
 PairVAE data format (pair_all_data.h5)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The ``scripts/04_pair_txtTOhdf5.py`` script creates HDF5 files for paired
+The ``scripts/04_prepare_pairdataset.py`` script creates HDF5 files for paired
 modality training. The structure extends the single-modality format to
 accommodate two related datasets.
+
+You will have two options:
+- If you have a pairing file that contains paths to the new TXT SAXS and TXT LES data, use PairTextToHDF5Converter.
+This option should be used when you have new SAXS and LES datasets to avoid data leakage — meaning the individual VAEs have not seen this data before.
+The pairing file should be a panda dataframe with columns `saxs_path` and `les_path`. This paths should point to unseen txt files.
+- If you want to use the same datasets for training both the VAE and the PairVAE, use PairingHDF5Converter.
+This converter creates data splits (training/validation) before training the VAEs. These same splits are then reused for training the PairVAE, ensuring that training and validation subsets never overlap.
+The splits are save as `.npy` files that you need to inform in the `.yaml` training files as `array_train_indices` and `array_val_indices`.
 
 **File structure:**
 

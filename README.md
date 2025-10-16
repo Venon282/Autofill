@@ -158,7 +158,7 @@ Ce script transforme les séries temporelles `.txt` et le CSV nettoyé en un fic
 python scripts/02_txtTOhdf5.py \
   --data_csv_path data/metadata_clean.csv \
   --data_dir data/txt/ \
-  --final_output_file data/all_data.h5 \
+  --output_hdf5_filename data/all_data.h5 \
   --json_output data/metadata_dict.json \
   --pad_size 900
 ```
@@ -201,13 +201,13 @@ Les paramètres essentiels à personnaliser dans la configuration :
 
 ### 4. Conversion appariée et PairVAE
 
-Pour des signaux appariés (ex. SAXS/LES), convertissez d’abord les fichiers avec `scripts/04_pair_txtTOhdf5.py` :
+Pour des signaux appariés (ex. SAXS/LES), convertissez d’abord les fichiers avec `scripts/04_prepare_pairdataset.py` :
 
 ```bash
-python scripts/04_pair_txtTOhdf5.py \
+python scripts/04_prepare_pairdataset.py \
   --data_csv_path data/metadata_clean.csv \
   --data_dir data/txt/ \
-  --final_output_file data/all_pair_data.h5 \
+  --output_hdf5_filename data/all_pair_data.h5 \
   --json_output data/pair_metadata_dict.json \
   --pad_size 900
 ```
