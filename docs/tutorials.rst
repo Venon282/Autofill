@@ -11,12 +11,15 @@ instructions. Every step refers to a script under ``scripts/`` and explains:
 Follow the numbered order below if you are running the pipeline for the first
 time.
 
+If you have already HDF5 files for both SAXS and LES, go directly to Step 3.
+See :ref:`step3-preprocess` for details.
+
 .. contents::
    :local:
    :depth: 1
 
-Step 1 – Preprocess CSV metadata
---------------------------------
+Step 1 – Preprocess CSV metadata (optional)
+-------------------------------------------
 
 **Why this matters:** merge the raw CSV exports produced during experiments into
 one clean metadata file with normalized paths.
@@ -55,8 +58,8 @@ one clean metadata file with normalized paths.
    * Run ``python scripts/saminitycheck.py data/metadata_clean.csv`` afterwards to
      list missing files before moving on.
 
-Step 2 – Convert TXT files to HDF5 for the VAE
-----------------------------------------------
+Step 2 – Convert TXT files to HDF5 for the VAE (optional)
+---------------------------------------------------------
 
 **Why this matters:** the neural networks expect a fixed-size HDF5 dataset
 rather than loose text files.
@@ -102,17 +105,21 @@ Please study step 3 before training VAE in order to prepare the data for PairVAE
    * A pad size that is too small will crop information; too large may slow down
      training. Start with 900 for SAXS data.
 
+
 Step 3 – Convert TXT files for PairVAE or split HDF5 SAXS files
 ---------------------------------------------------------------
 
 **Why this matters:** PairVAE requires paired inputs (e.g. LES and SAXS) stored
 in a single HDF5 file.
 
-**Command**
+PairTextToHDF5Converter
+***********************
 
-If you have a pairing file that contains paths to the new TXT SAXS and TXT LES data, use PairTextToHDF5Converter.
+If you have a pairing file that contains paths to the new TXT SAXS and TXT LES data, use **PairTextToHDF5Converter**.
 This option should be used when you have new SAXS and LES datasets to avoid data leakage — meaning the individual VAEs have not seen this data before.
-The pairing file should be a panda dataframe with columns `saxs_path` and `les_path`. This paths should point to unseen txt files.
+The pairing file should be a panda dataframe with columns `saxs_path` and `les_path`. 
+
+**Command**
 
 .. code-block:: bash
 
@@ -122,18 +129,6 @@ The pairing file should be a panda dataframe with columns `saxs_path` and `les_p
      --output_hdf5_filename data/pair_all_data.h5 \
      --json_output data/pair_metadata_dict.json \
      --pad_size 900
-
-If you want to use the same datasets for training both the VAE and the PairVAE, use PairingHDF5Converter.
-This converter creates data splits (training/validation) before training the VAEs. These same splits are then reused for training the PairVAE, ensuring that training and validation subsets never overlap.
-The splits are save as `.npy` files that you need to inform in the `.yaml` training files as `array_train_indices` and `array_val_indices` for BOTH VAE trainign and PairVAE training to ensure that the rights splits are always used.
-
-.. code-block:: bash
-
-   python scripts/04_prepare_pairdataset.py \
-     --saxs_hdf5_path cylinder_saxs_library_no_noise_meta_diameter.h5 \
-     --les_hdf5_path cylinder_les_meta.h5 \
-     --dir_output pairvae_dataset \
-     --output_hdf5_filename pair_all_data.hdf5
 
 **Arguments**
 
@@ -153,6 +148,40 @@ The splits are save as `.npy` files that you need to inform in the `.yaml` train
   dataset.
 * Console logs indicating where the files were written and how many pairs were
   processed.
+
+.. _step3-preprocess:
+
+PairingHDF5Converter
+********************
+
+If you want to use the same datasets for training both the VAE and the PairVAE, use PairingHDF5Converter.
+This converter creates data splits (training/validation) before training the VAEs. These same splits are then reused for training the PairVAE, ensuring that training and validation subsets never overlap.
+The splits are save as `.npy` files that you need to inform in the `.yaml` training files as `array_train_indices` and `array_val_indices` for BOTH VAE training and PairVAE training to ensure that the rights splits are always used.
+
+**Command**
+
+.. code-block:: bash
+
+   python scripts/04_prepare_pairdataset.py \
+     --saxs_hdf5_path cylinder_saxs_library_no_noise_meta_diameter.h5 \
+     --les_hdf5_path cylinder_les_meta.h5 \
+     --dir_output pairvae_dataset \
+     --output_hdf5_filename pair_all_data.hdf5
+
+**Arguments**
+
+* ``--saxs_hdf5_path`` – HDF5 SAXS path.
+* ``--les_hdf5_path`` – HDF5 LES path.
+* ``--dir_output`` – directory with the npy and HDF5 files are stored.
+* ``--output_hdf5_filename`` – name of HDF5 file.
+* ``--split_train_ratio`` – split ratio >0 and <1..
+
+**Outputs**
+
+* ``data/pair_all_data.h5`` – HDF5 dataset containing paired arrays and helper
+  metadata.
+* ``data/train_(pair_saxs_les).npy`` – array containing pair_idx, saxs_idx, les_idx. Used for training.
+* ``data/val_(pair_saxs_les).npy`` – array containing pair_idx, saxs_idx, les_idx. Used for validation.
 
 .. tip::
    **Tips**
@@ -475,7 +504,7 @@ checkpoint and saves the results for inspection.
      installed in your environment.
 
 Step 7 – Compute validation metrics and SASFit/LES analysis
--------------------------------------------------------
+-----------------------------------------------------------
 
 **Why this matters:** summarises model quality and optionally runs SASFit to
 recover physical parameters.

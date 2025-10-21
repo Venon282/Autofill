@@ -4,7 +4,7 @@ Getting started
 .. note::
    **About AutoFill**
 
-   AutoFill is a machine learning toolbox for automating scattering experiment analysis. This toolkit enables training of variational autoencoders (VAEs) on SAXS and LES data, including advanced cross-modal reconstruction capabilities through PairVAE models. Whether you're working with single-modality data or paired measurements, AutoFill streamlines the entire pipeline from data preprocessing to model training and inference.
+   AutoFill is a deep learning toolbox for the generation of nanoparticules signals. This toolkit enables training of variational autoencoders (VAEs) on SAXS and LES data, including advanced cross-modal reconstruction capabilities through PairVAE models. Whether you're working with single-modality data or paired measurements, AutoFill streamlines the entire pipeline from data preprocessing to model training and inference.
 
    **Authors:**
 
