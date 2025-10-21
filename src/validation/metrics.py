@@ -132,18 +132,18 @@ class SaxsFitMetric(BaseFitMetric):
             return np.log10(np.clip(i_fit, eps, None)) - np.log10(np.clip(intensity, eps, None))
 
         params = Parameters()
-        params.add("scale", value=1e14, min=1e6, max=1e20)
-        params.add("radius", value=250.0, min=100.0, max=500.0)
-        params.add("length", value=100.0, min=40.0, max=160.0)
-        params.add("background", value=0, vary=False)
+        params.add("scale", value=1, min=1e-10, max=1e15) # changé
+        params.add("radius", value=500, min=5, max=1200) # changé
+        params.add("length", value=100.0, min=40.0, max=160.0) # changé
+        params.add("background", value=0, min = 0.0 , max = 1e-6,vary=True) # changé
 
         result = minimize(
             residual_log,
             params,
             method="differential_evolution",
             minimizer_kws=dict(
-                popsize=1000,
-                maxiter=300,
+                popsize=400, # changé
+                maxiter=300, # changé
                 polish=True,
                 tol=1e-6,
                 updating="deferred",

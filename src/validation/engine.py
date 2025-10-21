@@ -96,7 +96,7 @@ class BaseValidationEngine(ABC):
         eval_percentage: float = 0.1,
         fit_percentage: float = 0.0005,
         qmin_fit: float = 0.001,
-        qmax_fit: float = 0.3,
+        qmax_fit: float = 0.5,
         factor_scale_to_conc: float = 20878,
         n_processes: Optional[int] = None,
         random_state: int = 42,
