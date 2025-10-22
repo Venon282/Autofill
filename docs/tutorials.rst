@@ -18,6 +18,13 @@ See :ref:`step3-preprocess` for details.
    :local:
    :depth: 1
 
+.. important::
+    * Use a virtual environment with all dependencies installed (see
+      :doc:`getting_started`).
+    * You can replace ``python`` with ``uv run`` if you installed the
+      project with ``uv``. This runs the scripts within the virtual environment
+      without activating it explicitly.
+
 Step 1 – Preprocess CSV metadata (optional)
 -------------------------------------------
 
@@ -51,8 +58,6 @@ one clean metadata file with normalized paths.
   rows were saved.
 
 .. tip::
-   **Tips**
-
    * Large merges may take a few minutes; running the command in ``tmux`` lets it
      continue if your SSH session disconnects.
    * Run ``python scripts/saminitycheck.py data/metadata_clean.csv`` afterwards to
@@ -98,7 +103,6 @@ Please study step 3 before training VAE in order to prepare the data for PairVAE
 * Console messages showing the destination paths of the HDF5 and JSON files.
 
 .. tip::
-   **Tips**
 
    * If the script prints an error about a missing TXT file, double-check that the
      ``path`` column in your CSV uses relative paths starting from ``data_dir``.
@@ -184,7 +188,6 @@ The splits are save as `.npy` files that you need to inform in the `.yaml` train
 * ``data/val_(pair_saxs_les).npy`` – array containing pair_idx, saxs_idx, les_idx. Used for validation.
 
 .. tip::
-   **Tips**
 
    * When combining modalities, keep a consistent folder structure so both files in
      a pair can be found relative to ``--data_dir``.
@@ -291,14 +294,12 @@ For complete configuration examples and all available parameters, refer to :doc:
 * Best model checkpoint saved as ``best.ckpt``
 * Configuration backup saved as ``config_model.yaml``
 
-Training outputs
-~~~~~~~~~~~~~~~~
+**Training outputs**
 
 .. note::
    After training, AutoFill generates comprehensive outputs including model checkpoints, configuration files, and visualization plots for monitoring and analysis.
 
-Directory structure
-^^^^^^^^^^^^^^^^^^^
+**Directory structure**
 
 After training, you'll find the following structure:
 
@@ -318,8 +319,7 @@ After training, you'll find the following structure:
        ├── val_plot.png            # Validation plots
        └── train_plot.png          # Training plots (if enabled)
 
-Model checkpoints
-^^^^^^^^^^^^^^^^^
+**Model checkpoints**
 
 ``best.ckpt``
     Contains the model state with the best validation loss, including:
@@ -329,12 +329,13 @@ Model checkpoints
     - Learning rate scheduler state
     - Training epoch information
     - Validation metrics
+    - Transformation pipeline details
+    - Data Q range used during training
 
 ``lightning_logs/version_*/checkpoints/``
     Contains periodic checkpoints saved during training (controlled by ``save_every``).
 
-Configuration files
-^^^^^^^^^^^^^^^^^^^
+**Configuration files**
 
 ``config_model.yaml``
     Complete configuration file used for the training run, including:
@@ -345,8 +346,7 @@ Configuration files
     - Training settings
     - Metadata conversion dictionaries
 
-Visualization and monitoring
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+**Visualization and monitoring**
 
 **TensorBoard** (when no MLFlow URI is provided):
 
@@ -374,8 +374,7 @@ Visualization and monitoring
 - Learning rate schedules
 - Model hyperparameters
 
-Inference plots
-^^^^^^^^^^^^^^^
+**Inference plots**
 
 Generated plots include:
 
@@ -385,7 +384,6 @@ Generated plots include:
 - **Training samples**: (if ``plot_train: true``) Training set examples
 
 .. tip::
-   **Tips**
 
    * **Start with the configuration guide**: :doc:`configuration` contains complete examples
    * Monitor training with: ``tensorboard --logdir=train_results``
@@ -496,7 +494,6 @@ checkpoint and saves the results for inspection.
 * Console messages confirming the model type and listing the saved artefacts.
 
 .. tip::
-   **Tips**
 
    * When evaluating from raw CSVs, use ``--data_dir`` to point to the folder with
      the original ``.txt`` files.
@@ -554,7 +551,6 @@ recover physical parameters.
   processed sample.
 
 .. tip::
-   **Tips**
 
    * Si SASFit n’est pas installé, lancez le script avec ``--fit_percentage 0``
      pour ignorer les ajustements physiques.
@@ -590,7 +586,6 @@ stronger configurations automatically.
 * A console table summarising the hyper-parameter combinations that were tried.
 
 .. tip::
-   **Tips**
 
    * Start with small ranges to keep the number of experiments manageable.
    * Check the generated log files to identify the best trial and replicate it
