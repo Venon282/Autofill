@@ -13,8 +13,6 @@ from lightning.pytorch.loggers import MLFlowLogger
 from torch.utils.data import DataLoader
 from uniqpath import unique_path
 
-torch.set_float32_matmul_precision('high')
-
 
 from src.dataset.datasetH5 import HDF5Dataset
 from src.dataset.datasetPairH5 import PairHDF5Dataset
