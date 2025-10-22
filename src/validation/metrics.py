@@ -52,9 +52,9 @@ class LesFitMetric(BaseFitMetric):
             return None
         pred_diam_nm, pred_length_nm, concentration, _ = results
 
-        diam_err = abs(pred_diam_nm - true_diam)
-        length_err = abs(pred_length_nm - true_length)
-        conc_err = abs(concentration - true_conc)
+        diam_err = abs(pred_diam_nm - true_diam)/true_diam
+        length_err = abs(pred_length_nm - true_length)/true_length
+        conc_err = abs(concentration - true_conc)/true_conc
 
         return (
             diam_err,
@@ -174,9 +174,9 @@ class SaxsFitMetric(BaseFitMetric):
         pred_diam_nm = radius_nm * 2
         pred_length_nm = np.rint(length_a / 10)
 
-        diam_err = abs(pred_diam_nm - true_diam)
-        length_err = abs(pred_length_nm - true_length)
-        conc_err = abs(concentration - true_conc)
+        diam_err = abs(pred_diam_nm - true_diam)/true_diam
+        length_err = abs(pred_length_nm - true_length)/true_length
+        conc_err = abs(concentration - true_conc)/true_conc
 
         return (
             diam_err,

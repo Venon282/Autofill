@@ -75,7 +75,7 @@ def main() -> None:
     if args.name:
         config["run_name"] = args.name
     if args.hdf5_file:
-        config.setdefault("dataset", {})["h5_file_path"] = args.hdf5_file
+        config.setdefault("dataset", {})["hdf5_file"] = args.hdf5_file
     if args.conversion_dict_path:
         config.setdefault("dataset", {})["conversion_dict_path"] = args.conversion_dict_path
     if args.technique:
@@ -101,7 +101,7 @@ def main() -> None:
             else:
                 print("Starting training...")
                 trainer = TrainPipeline(config)
-                trainer.run()
+                trainer.train()
         except KeyboardInterrupt:
             print("\nTraining interrupted by user")
             sys.exit(1)

@@ -55,9 +55,9 @@ def validate_config_and_files(config: dict[str, Any], args: argparse.Namespace) 
         dataset_config = config["dataset"]
 
         # Check HDF5 file path - can be from config or --hdf5_file argument
-        h5_file = getattr(args, 'hdf5_file', None) or dataset_config.get("h5_file_path")
+        h5_file = getattr(args, 'hdf5_file', None) or dataset_config.get("hdf5_file")
         if not h5_file:
-            errors.append("Missing dataset HDF5 file path: must be specified either in config 'dataset.h5_file_path' or via '--hdf5_file' argument")
+            errors.append("Missing dataset HDF5 file path: must be specified either in config 'dataset.hdf5_file' or via '--hdf5_file' argument")
         elif not os.path.exists(h5_file):
             errors.append(f"HDF5 file not found: {h5_file}")
         else:

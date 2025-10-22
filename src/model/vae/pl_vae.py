@@ -60,7 +60,7 @@ class PlVAE(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         """Compute training losses and log metrics."""
 
-        output = self.model(y=batch["data_y"], metadata=batch["metadata"])
+        output = self.model(x=batch["data_y"], metadata=batch["metadata"])
         loss, recon_loss, kl_loss = self.compute_loss(batch, output)
         self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True)
         self.log('train_recon_loss', recon_loss, on_step=True, on_epoch=True, prog_bar=False)
@@ -70,7 +70,7 @@ class PlVAE(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         """Compute validation metrics."""
 
-        output = self.model(y=batch["data_y"], metadata=batch["metadata"])
+        output = self.model(x=batch["data_y"], metadata=batch["metadata"])
         loss, recon_loss, kl_loss = self.compute_loss(batch, output)
         self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True)
         self.log('val_recon_loss', recon_loss, on_step=True, on_epoch=True, prog_bar=False)

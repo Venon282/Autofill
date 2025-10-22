@@ -192,8 +192,8 @@ class HDF5Dataset(Dataset):
         metadata = {k: torch.tensor(self.metadata_datasets[k][original_idx])
                     for k in self.requested_metadata}
 
-        data_y = self.transformer_y.transform(data_y)
-        data_y = torch.as_tensor(data_y, dtype=torch.float32).unsqueeze(0)
+        data_y_transformed = self.transformer_y.transform(data_y)
+        data_y_transformed = torch.as_tensor(data_y_transformed, dtype=torch.float32).unsqueeze(0)
 
         if self.use_data_q and self.data_q is not None:
             data_q = self.transformer_q.transform(self.data_q)
@@ -202,7 +202,8 @@ class HDF5Dataset(Dataset):
             data_q = None
 
         batch = {
-            "data_y": data_y,
+            "data_y": data_y_transformed,
+            "data_y_untransformed": torch.as_tensor(data_y, dtype=torch.float32).unsqueeze(0),
             "metadata": metadata,
             "csv_index": self.csv_index[original_idx],
             "len": self.len[original_idx],
