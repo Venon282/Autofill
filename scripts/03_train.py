@@ -5,16 +5,19 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-import traceback
 from typing import Any
 
 import yaml
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from src.logging_utils import get_logger
 from src.model.grid_search import GridSearch
 from src.model.trainer import TrainPipeline
 from scripts.utils.config_validator import validate_config_and_files
+
+
+logger = get_logger(__name__)
 
 TRANSFORM_OVERRIDES: dict[str, dict[str, Any]] = {
     "les": {
@@ -57,17 +60,17 @@ def main() -> None:
 
     # Load configuration file
     if not os.path.exists(args.config):
-        print(f"Configuration file not found: {args.config}")
+        logger.error("Configuration file not found: %s", args.config)
         sys.exit(1)
 
     try:
         with open(args.config, "r") as f:
             config = yaml.safe_load(f)
     except yaml.YAMLError as e:
-        print(f"Error parsing YAML configuration: {e}")
+        logger.error("Error parsing YAML configuration: %s", e)
         sys.exit(1)
     except Exception as e:
-        print(f"Error loading configuration file: {e}")
+        logger.error("Error loading configuration file: %s", e)
         sys.exit(1)
 
     config["model"]["spec"] = args.spec
@@ -97,19 +100,18 @@ def main() -> None:
     if not getattr(args, 'dry_run', False):
         try:
             if args.gridsearch:
-                print("Starting grid search...")
+                logger.info("Starting grid search...")
                 grid_search = GridSearch(config)
                 grid_search.run()
             else:
-                print("Starting training...")
+                logger.info("Starting training...")
                 trainer = TrainPipeline(config)
                 trainer.train()
         except KeyboardInterrupt:
-            print("\nTraining interrupted by user")
+            logger.warning("Training interrupted by user")
             sys.exit(1)
         except Exception as e:
-            print(f"\nTraining failed: {e}")
-            traceback.print_exc()
+            logger.exception("Training failed: %s", e)
             sys.exit(1)
 
 

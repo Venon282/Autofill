@@ -19,6 +19,10 @@ from src.dataset.datasetTXT import TXTDataset
 from src.dataset.transformations import Pipeline
 from src.model.pairvae.pl_pairvae import PlPairVAE
 from src.model.vae.pl_vae import PlVAE
+from src.logging_utils import get_logger
+
+
+logger = get_logger(__name__)
 
 
 def move_to_device(batch, device: torch.device):
@@ -136,7 +140,7 @@ class BaseInferencer(abc.ABC):
         """Execute :meth:`infer_and_save` and report the output location."""
 
         self.infer_and_save()
-        print(f"Inference results saved in {self.output_dir}")
+        logger.info("Inference results saved in %s", self.output_dir)
 
 
 class VAEInferencer(BaseInferencer):

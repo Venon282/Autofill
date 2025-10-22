@@ -4,7 +4,11 @@ import copy
 import itertools
 from typing import Dict, Iterable
 
+from src.logging_utils import get_logger
 from src.model.trainer import TrainPipeline
+
+
+logger = get_logger(__name__)
 
 
 class GridSearch:
@@ -39,29 +43,31 @@ class GridSearch:
         total_runs = 1
         for value_list in values:
             total_runs *= len(value_list)
-        print("=" * 60)
-        print(f"[GridSearch] Starting grid search: {total_runs} runs")
-        print(f"[GridSearch] Parameter grid: {self.param_grid}")
-        print("=" * 60)
+        logger.info("=" * 60)
+        logger.info("Starting grid search: %d runs", total_runs)
+        logger.info("Parameter grid: %s", self.param_grid)
+        logger.info("=" * 60)
         for index, combination in enumerate(itertools.product(*values)):
-            print("-" * 60)
-            print(f"[GridSearch] Run {index + 1}/{total_runs}")
+            logger.info("-" * 60)
+            logger.info("Run %d/%d", index + 1, total_runs)
             import torch
 
-            print(f" GPU AVAILABLE: {torch.cuda.is_available()}")
+            logger.info("GPU available: %s", torch.cuda.is_available())
             param_set = dict(zip(keys, combination))
-            print(f"[GridSearch] Parameters: {param_set}")
+            logger.info("Parameters: %s", param_set)
             config = copy.deepcopy(self.base_config)
             self._update_config(config, param_set)
             base_run_name = config.get("run_name", "")
             param_str = "_".join(f"{k.split('.')[-1]}={val}" for k, val in param_set.items())
             config["run_name"] = f"{base_run_name}_grid_{index}_{param_str}"
-            print(f"[GridSearch] Run name: {config['run_name']}")
-            print("[GridSearch] Initializing training pipeline...")
+            logger.info("Run name: %s", config["run_name"])
+            logger.info("Initializing training pipeline...")
             config.pop("param_grid", None)
             trainer = TrainPipeline(config, verbose=False)
-            print(f"[GridSearch] Starting training for run {index + 1}/{total_runs}")
+            logger.info(
+                "Starting training for run %d/%d", index + 1, total_runs
+            )
             trainer.train()
-            print(f"[GridSearch] Finished run {index + 1}/{total_runs}")
-        print("=" * 60)
-        print("[GridSearch] All grid search runs completed.")
+            logger.info("Finished run %d/%d", index + 1, total_runs)
+        logger.info("=" * 60)
+        logger.info("All grid search runs completed.")

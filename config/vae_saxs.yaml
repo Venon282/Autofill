@@ -1,6 +1,6 @@
-experiment_name: "SAXS_NEW_VAE"
-run_name: saxs_cylinder_ag_newvae
-mlflow_uri: https://mlflowts.irit.fr/
+experiment_name: "AUTOFILL_SAXS"
+run_name: saxs_cylinder_ag
+#mlflow_uri: https://mlflowts.irit.fr/
 dataset:
   conversion_dict:
   hdf5_file: DATA/cylinder_saxs_library_no_noise_meta_diameter_metric.h5
@@ -25,7 +25,7 @@ training:
   beta: 1.0e-06
   eta_min: 1.0e-10
   max_lr: 1.0e-04
-  num_epochs: 300
+  num_epochs: 1
   num_gpus: 1
   num_nodes: 1
   patience: 40

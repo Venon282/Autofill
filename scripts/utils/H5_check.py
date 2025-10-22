@@ -21,6 +21,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import logging
+import os
 import sys
 from pathlib import Path
 from typing import Iterable
@@ -28,10 +30,21 @@ from typing import Iterable
 import h5py
 import numpy as np
 
+sys.path.append(
+    os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
+)
+
+from src.logging_utils import get_logger
+
 
 CRITICAL = "CRITICAL"
 WARNING = "WARNING"
 INFO = "INFO"
+
+LEVEL_MAP = {CRITICAL: logging.CRITICAL, WARNING: logging.WARNING, INFO: logging.INFO}
+
+
+logger = get_logger(__name__)
 
 
 def check_exists(hdf: h5py.File, name: str) -> bool:
@@ -64,7 +77,7 @@ def diagnose_hdf5(path: Path, file_type: str, extra_cols: Iterable[str], verbose
     infos = []
 
     if not path.exists():
-        print(f"{CRITICAL}: HDF5 file not found: {path}")
+        logger.critical("HDF5 file not found: %s", path)
         return 1
 
     with h5py.File(path, "r") as hdf:
@@ -186,12 +199,12 @@ def diagnose_hdf5(path: Path, file_type: str, extra_cols: Iterable[str], verbose
             issues.append((CRITICAL, "Missing 'csv_index' dataset: cannot validate per-sample lengths."))
 
     # Print summary
-    print("\n=== H5 check summary ===")
+    logger.info("=== H5 check summary ===")
     for level, msg in infos:
         if verbose or level != INFO:
-            print(f"{level}: {msg}")
+            logger.log(LEVEL_MAP[level], msg)
     for level, msg in issues:
-        print(f"{level}: {msg}")
+        logger.log(LEVEL_MAP[level], msg)
 
     # Determine exit code: critical issues present?
     has_critical = any(level == CRITICAL for level, _ in issues)
@@ -214,9 +227,9 @@ def main() -> None:
     assert path.suffix in {".h5", ".hdf5"}, "Input file must be an HDF5 file with .h5 or .hdf5 extension"
     rc = diagnose_hdf5(path, args.type, args.required_columns, verbose=args.verbose)
     if rc != 0:
-        print("\nValidation failed: critical issues found.")
+        logger.error("Validation failed: critical issues found.")
     else:
-        print("\nValidation passed: no critical issues.")
+        logger.info("Validation passed: no critical issues.")
     sys.exit(rc)
 
 

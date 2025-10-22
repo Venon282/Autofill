@@ -12,6 +12,7 @@ __pycache__/
 docs/_build/
 *.lock
 docs/_build/
+*.ckpt
 
 mlruns/*
 saxs_to_saxs/*

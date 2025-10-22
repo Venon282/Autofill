@@ -4,7 +4,17 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from typing import Any
+
+sys.path.append(
+    os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
+)
+
+from src.logging_utils import get_logger
+
+
+logger = get_logger(__name__)
 
 
 def validate_config_and_files(config: dict[str, Any], args: argparse.Namespace) -> bool:
@@ -18,8 +28,8 @@ def validate_config_and_files(config: dict[str, Any], args: argparse.Namespace) 
         bool: True if validation passes, False if errors are found
     """
 
-    print("Validating configuration...")
-    print("-" * 50)
+    logger.info("Validating configuration...")
+    logger.info("-" * 50)
 
     errors = []
     warnings = []
@@ -44,11 +54,11 @@ def validate_config_and_files(config: dict[str, Any], args: argparse.Namespace) 
 
         # Show effective model type (from config or override)
         if getattr(args, 'mode', None):
-            print(f"Model type: {model_type} (overridden by --mode argument)")
+            logger.info("Model type: %s (overridden by --mode argument)", model_type)
         else:
-            print(f"Model type: {model_type}")
+            logger.info("Model type: %s", model_type)
 
-        print(f"Latent dim: {model_config.get('latent_dim', 'default: 128')}")
+        logger.info("Latent dim: %s", model_config.get("latent_dim", "default: 128"))
 
     # Validate dataset configuration
     if "dataset" in config:
@@ -63,13 +73,15 @@ def validate_config_and_files(config: dict[str, Any], args: argparse.Namespace) 
         else:
             # Show effective HDF5 file path (from config or override)
             if getattr(args, 'hdf5_file', None):
-                print(f"HDF5 file found: {h5_file} (overridden by --hdf5_file argument)")
+                logger.info(
+                    "HDF5 file found: %s (overridden by --hdf5_file argument)", h5_file
+                )
             else:
-                print(f"HDF5 file found: {h5_file}")
+                logger.info("HDF5 file found: %s", h5_file)
 
             # Check file size
             file_size = os.path.getsize(h5_file) / (1024**3)  # GB
-            print(f"  File size: {file_size:.2f} GB")
+            logger.info("  File size: %.2f GB", file_size)
 
     # Validate training configuration
     if "training" in config:
@@ -84,23 +96,23 @@ def validate_config_and_files(config: dict[str, Any], args: argparse.Namespace) 
         elif not os.path.exists(train_indices):
             errors.append(f"Training indices file not found: {train_indices}")
         else:
-            print(f"Training indices found: {train_indices}")
+            logger.info("Training indices found: %s", train_indices)
 
         if not val_indices:
             errors.append("Missing validation indices file path")
         elif not os.path.exists(val_indices):
             errors.append(f"Validation indices file not found: {val_indices}")
         else:
-            print(f"Validation indices found: {val_indices}")
+            logger.info("Validation indices found: %s", val_indices)
 
         # Check training parameters
         num_epochs = training_config.get("num_epochs", 100)
         batch_size = training_config.get("batch_size", 32)
         num_gpus = training_config.get("num_gpus", 1)
 
-        print(f"Training epochs: {num_epochs}")
-        print(f"Batch size: {batch_size}")
-        print(f"Number of GPUs: {num_gpus}")
+        logger.info("Training epochs: %s", num_epochs)
+        logger.info("Batch size: %s", batch_size)
+        logger.info("Number of GPUs: %s", num_gpus)
 
         # Check GPU availability if requested
         try:
@@ -111,7 +123,7 @@ def validate_config_and_files(config: dict[str, Any], args: argparse.Namespace) 
                 elif torch.cuda.device_count() < num_gpus:
                     warnings.append(f"Requested {num_gpus} GPUs but only {torch.cuda.device_count()} available")
                 else:
-                    print(f"CUDA available with {torch.cuda.device_count()} GPU(s)")
+                    logger.info("CUDA available with %d GPU(s)", torch.cuda.device_count())
         except ImportError:
             warnings.append("PyTorch not available - cannot check GPU status")
 
@@ -120,36 +132,34 @@ def validate_config_and_files(config: dict[str, Any], args: argparse.Namespace) 
     if conv_dict_path and not os.path.exists(conv_dict_path):
         errors.append(f"Conversion dictionary file not found: {conv_dict_path}")
     elif conv_dict_path:
-        print(f"Conversion dictionary found: {conv_dict_path}")
+        logger.info("Conversion dictionary found: %s", conv_dict_path)
 
     # Check output directory
     output_dir = config.get("training", {}).get("output_dir", "train_results")
     if not os.path.exists(output_dir):
         warnings.append(f"Output directory does not exist (will be created): {output_dir}")
     else:
-        print(f"Output directory exists: {output_dir}")
+        logger.info("Output directory exists: %s", output_dir)
 
-    print("-" * 50)
+    logger.info("-" * 50)
 
     # Report warnings
     if warnings:
-        print("Warnings:")
+        logger.warning("Warnings detected during validation:")
         for warning in warnings:
-            print(f"   - {warning}")
-        print()
+            logger.warning(" - %s", warning)
 
     # Report errors
     if errors:
-        print("Configuration errors found:")
+        logger.error("Configuration errors found:")
         for error in errors:
-            print(f"   - {error}")
-        print()
-        print("Please fix these errors before training.")
+            logger.error(" - %s", error)
+        logger.error("Please fix these errors before training.")
         return False
     else:
-        print("Configuration validation passed!")
+        logger.info("Configuration validation passed!")
         if getattr(args, 'dry_run', False):
-            print("   Ready to start training. Remove --dry-run to begin.")
+            logger.info("Ready to start training. Remove --dry-run to begin.")
         return True
 
 
@@ -164,14 +174,14 @@ def validate_file_exists(filepath: str, description: str) -> bool:
         bool: True if file exists, False otherwise
     """
     if not filepath:
-        print(f"Missing {description}")
+        logger.error("Missing %s", description)
         return False
 
     if not os.path.exists(filepath):
-        print(f"{description} not found: {filepath}")
+        logger.error("%s not found: %s", description, filepath)
         return False
 
-    print(f"{description} found: {filepath}")
+    logger.info("%s found: %s", description, filepath)
     return True
 
 
@@ -194,7 +204,7 @@ def check_gpu_availability(num_gpus: int) -> list[str]:
             elif torch.cuda.device_count() < num_gpus:
                 warnings.append(f"Requested {num_gpus} GPUs but only {torch.cuda.device_count()} available")
             else:
-                print(f"CUDA available with {torch.cuda.device_count()} GPU(s)")
+                logger.info("CUDA available with %d GPU(s)", torch.cuda.device_count())
     except ImportError:
         warnings.append("PyTorch not available - cannot check GPU status")
 

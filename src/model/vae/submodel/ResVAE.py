@@ -2,6 +2,11 @@
 import torch
 from torch import nn
 
+from src.logging_utils import get_logger
+
+
+logger = get_logger(__name__)
+
 class ResVAE(nn.Module):
     def __init__(self, input_dim=1000, latent_dim=64, in_channels=1, hidden_dims=None, output_channels=1):
         super().__init__()
@@ -72,7 +77,7 @@ class ResVAE(nn.Module):
         )
 
     def display_info(self):
-        print("RESEAU VAE")
+        logger.info("RESEAU VAE")
 
     # ---- ENCODER ----
     def encode(self, x):

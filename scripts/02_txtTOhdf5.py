@@ -6,6 +6,7 @@ import argparse
 import json
 import math
 import os
+import sys
 import warnings
 from pathlib import Path
 from typing import Iterable
@@ -14,6 +15,13 @@ import h5py
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from src.logging_utils import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class TextToHDF5Converter:
@@ -223,8 +231,8 @@ class TextToHDF5Converter:
         with open(self.json_output_path, "w", encoding="utf-8") as handle:
             json.dump(self.conversion_dict, handle, ensure_ascii=False, indent=2)
 
-        print(f"HDF5 dataset written to: {output_file}")
-        print(f"Metadata dictionary written to: {self.json_output_path}")
+        logger.info("HDF5 dataset written to: %s", output_file)
+        logger.info("Metadata dictionary written to: %s", self.json_output_path)
 
 
 def build_parser() -> argparse.ArgumentParser:

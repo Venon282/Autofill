@@ -10,6 +10,11 @@ import matplotlib.pyplot as plt
 import torch
 import numpy as np
 
+from src.logging_utils import get_logger
+
+
+logger = get_logger(__name__)
+
 """Lightning callback utilities for running inference plots during validation."""
 
 TensorBatch = Union[torch.Tensor, Dict[str, Any], Iterable[Any]]
@@ -134,7 +139,7 @@ class InferencePlotCallback(pl.Callback):
             elif hasattr(exp, "add_figure"):  # TensorBoard
                 exp.add_figure("figure", fig)
             else:
-                print("Logger does not support figure logging.")
+                logger.warning("Logger does not support figure logging.")
         elif self.output_dir:
             os.makedirs(self.output_dir, exist_ok=True)
             plot_path = os.path.join(self.output_dir, artifact_file)

@@ -1,6 +1,11 @@
 import torch
 from torch import nn
 
+from src.logging_utils import get_logger
+
+
+logger = get_logger(__name__)
+
 
 class ResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels):
@@ -109,16 +114,16 @@ class ResVAEBN(nn.Module):
     def display_info(self):
         test_tensor = torch.zeros(1, self.in_channels, self.input_dim)
         flattened_size = self.encoder(test_tensor).view(1, -1).size(1)
-        print("VAE Architecture:")
-        print("\tInput Dimension:", self.input_dim)
-        print("\tLatent Dimension:", self.latent_dim)
-        print("\tIn Channels:", self.in_channels)
-        print("\tDown Channels:", self.down_channels)
-        print("\tUp Channels:", self.up_channels)
-        print("\tOutput Channels:", self.output_channels)
-        print("\tFlattened Size:", flattened_size)
-        print("\tEncoder Architecture:", self.encoder)
-        print("\tDecoder Architecture:", self.decoder)
+        logger.info("VAE Architecture:")
+        logger.info("\tInput Dimension: %s", self.input_dim)
+        logger.info("\tLatent Dimension: %s", self.latent_dim)
+        logger.info("\tIn Channels: %s", self.in_channels)
+        logger.info("\tDown Channels: %s", self.down_channels)
+        logger.info("\tUp Channels: %s", self.up_channels)
+        logger.info("\tOutput Channels: %s", self.output_channels)
+        logger.info("\tFlattened Size: %s", flattened_size)
+        logger.info("\tEncoder Architecture: %s", self.encoder)
+        logger.info("\tDecoder Architecture: %s", self.decoder)
 
     def encode(self, x):
         """ Encodeur VAE """
@@ -143,25 +148,25 @@ class ResVAEBN(nn.Module):
     def forward(self, x, metadata=None):
 
         if torch.isnan(x).any() or torch.isinf(x).any():
-            raise RuntimeError("[ResVAEBN] NaN or inf detected in input x")
+            raise RuntimeError("ResVAEBN detected NaN or inf in input x")
 
 
         mu, logvar = self.encode(x)
         if torch.isnan(mu).any() or torch.isinf(mu).any():
-            raise RuntimeError("[ResVAEBN] NaN or inf detected in mu")
+            raise RuntimeError("ResVAEBN detected NaN or inf in mu")
         if torch.isnan(logvar).any() or torch.isinf(logvar).any():
-            raise RuntimeError("[ResVAEBN] NaN or inf detected in logvar")
+            raise RuntimeError("ResVAEBN detected NaN or inf in logvar")
 
         # Clamp logvar pour éviter exp(logvar/2) inf/NaN
         logvar = torch.clamp(logvar, min=-10, max=10)
 
         z = self.reparameterize(mu, logvar)
         if torch.isnan(z).any() or torch.isinf(z).any():
-            raise RuntimeError("[ResVAEBN] NaN or inf detected in latent variable z")
+            raise RuntimeError("ResVAEBN detected NaN or inf in latent variable z")
 
         recon = self.decode(z)
         if torch.isnan(recon).any() or torch.isinf(recon).any():
-            raise RuntimeError("[ResVAEBN] NaN or inf detected in reconstructed output")
+            raise RuntimeError("ResVAEBN detected NaN or inf in reconstructed output")
 
         return {
             "recon": recon,

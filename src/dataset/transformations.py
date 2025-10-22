@@ -5,6 +5,11 @@ from typing import Any, Dict, List, Optional, Sequence, Union
 
 import numpy as np
 
+from src.logging_utils import get_logger
+
+
+logger = get_logger(__name__)
+
 
 class Transformer(ABC):
     """Abstract base class for transformation steps."""
@@ -151,7 +156,7 @@ class PreprocessingBase:
 
     def get_config(self) -> Dict[str, Any]:
         """Return a serializable configuration of the pipeline."""
-        print(f"Pipeline config: {self.pipeline.to_dict()}")
+        logger.info("Pipeline config: %s", self.pipeline.to_dict())
         return self.pipeline.to_dict()
 
     def is_fitted(self):

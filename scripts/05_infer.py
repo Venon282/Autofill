@@ -11,6 +11,10 @@ import torch
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.model.inferencer import PairVAEInferencer, VAEInferencer
+from src.logging_utils import get_logger
+
+
+logger = get_logger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
@@ -71,7 +75,7 @@ def main() -> None:
     if args.data_dir and not args.data_path.endswith(".csv"):
         raise ValueError("When --data_dir is set, --data_path must point to a CSV file.")
 
-    print(f"Loading {model_type} model from checkpoint: {args.checkpoint}")
+    logger.info("Loading %s model from checkpoint: %s", model_type, args.checkpoint)
     if model_type == "vae":
         runner = VAEInferencer(
             output_dir=args.outputdir,

@@ -6,6 +6,7 @@ import argparse
 import json
 import math
 import os
+import sys
 import warnings
 from pathlib import Path
 from typing import Iterable
@@ -15,6 +16,13 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 import random
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from src.logging_utils import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class PairTextToHDF5Converter:
@@ -226,8 +234,8 @@ class PairTextToHDF5Converter:
         with open(self.json_output_path, "w", encoding="utf-8") as handle:
             json.dump(self.conversion_dict, handle, ensure_ascii=False, indent=2)
 
-        print(f"HDF5 dataset written to: {output_file}")
-        print(f"Metadata dictionary written to: {self.json_output_path}")
+        logger.info("HDF5 dataset written to: %s", output_file)
+        logger.info("Metadata dictionary written to: %s", self.json_output_path)
 
 class PairingHDF5Converter:
     """
@@ -335,14 +343,16 @@ class PairingHDF5Converter:
                 unpaired_les.append(les_idx)
 
         if unpaired_saxs or unpaired_les:
-            print("WARNING: Some entries could not be paired between SAXS and LES datasets.")
+            logger.warning(
+                "Some entries could not be paired between SAXS and LES datasets."
+            )
 
         random.shuffle(pairs)
         n_train = int(self.split_train_ratio * len(pairs))
         train_pairs, val_pairs = pairs[:n_train], pairs[n_train:]
 
-        print(f"Training pairs: {len(train_pairs)}")
-        print(f"Validation pairs: {len(val_pairs)}")
+        logger.info("Training pairs: %d", len(train_pairs))
+        logger.info("Validation pairs: %d", len(val_pairs))
 
         os.makedirs(self.output_dir, exist_ok=True)
         np.save(os.path.join(self.output_dir, "train_pairs_saxs_les.npy"), np.array(train_pairs, dtype=object))
@@ -384,7 +394,7 @@ class PairingHDF5Converter:
             for key, val in data.items():
                 f_out.create_dataset(key, data=val)
 
-        print(f"Combined HDF5 saved to: {output_path}")
+        logger.info("Combined HDF5 saved to: %s", output_path)
 
     def convert(self):
         """Execute the full conversion pipeline."""
