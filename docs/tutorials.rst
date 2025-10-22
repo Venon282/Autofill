@@ -11,8 +11,12 @@ instructions. Every step refers to a script under ``scripts/`` and explains:
 Follow the numbered order below if you are running the pipeline for the first
 time.
 
-If you have already HDF5 files for both SAXS and LES, go directly to Step 3.
-See :ref:`step3-preprocess` for details.
+.. important::
+    If you already have HDF5 files for both SAXS and LES, you can skip Step 0
+    (TXT -> HDF5) and the TXT-to-HDF5 conversion steps described in Step 3.
+    If you need paired train/validation splits that are reused by both VAE and
+    PairVAE training, run Step 1 (Pairing HDF5 Converter) to create the
+    ``.npy`` split files and reference them in your YAML configs.
 
 .. contents::
    :local:
@@ -25,13 +29,21 @@ See :ref:`step3-preprocess` for details.
       project with ``uv``. This runs the scripts within the virtual environment
       without activating it explicitly.
 
-Step 1 – Preprocess CSV metadata (optional)
--------------------------------------------
+.. _step1-preprocess:
 
-**Why this matters:** merge the raw CSV exports produced during experiments into
-one clean metadata file with normalized paths.
+Step 0 – (Optional) Convert all TXT files to HDF5
+----------------------------------------------------------------------
 
-**Command**
+This optional step shows the minimal sequence to convert raw TXT files into
+single-modality HDF5 files for both SAXS and LES. Run these sub-steps when
+you start from raw text curves; if you already have HDF5 files you can skip
+this entire Step 0.
+
+0.1 Preprocess CSV metadata (script `01_csv_pre_process.py`)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Why:** Normalise and merge raw CSV exports into a single clean metadata
+file that points to your TXT files.
 
 .. code-block:: bash
 
@@ -40,31 +52,8 @@ one clean metadata file with normalized paths.
      data/metadata_clean.csv \
      --sep ";"
 
-**Arguments**
-
-* ``data/raw_csv/file1.csv data/raw_csv/file2.csv`` – one or more input CSV
-  files. Separate each path with a space; wrap paths that include spaces in
-  quotes.
-* ``data/metadata_clean.csv`` – the output CSV that will be read by the later
-  conversion steps.
-* ``--sep ";"`` – optional. Use it when your CSV uses semicolons instead of
-  commas; change the value if your files use a different delimiter.
-
-**Outputs**
-
-* ``data/metadata_clean.csv`` – cleaned metadata with harmonised column names
-  and POSIX-style paths.
-* Two ``print`` statements confirming where the CSV was written and how many
-  rows were saved.
-
-.. tip::
-   * Large merges may take a few minutes; running the command in ``tmux`` lets it
-     continue if your SSH session disconnects.
-   * Run ``python scripts/saminitycheck.py data/metadata_clean.csv`` afterwards to
-     list missing files before moving on.
-
-Step 2 – Convert TXT files to HDF5 for the VAE (optional)
----------------------------------------------------------
+0.2 Convert SAXS TXT files to HDF5 (script `02_txtTOhdf5.py`)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 **Why this matters:** the neural networks expect a fixed-size HDF5 dataset
 rather than loose text files.
@@ -109,9 +98,8 @@ Please study step 3 before training VAE in order to prepare the data for PairVAE
    * A pad size that is too small will crop information; too large may slow down
      training. Start with 900 for SAXS data.
 
-
-Step 3 – Convert TXT files for PairVAE or split HDF5 SAXS files
----------------------------------------------------------------
+0.3 Convert LES TXT files to HDF5 (script `02_txtTOhdf5.py`)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 **Why this matters:** PairVAE requires paired inputs (e.g. LES and SAXS) stored
 in a single HDF5 file.
@@ -121,7 +109,7 @@ PairTextToHDF5Converter
 
 If you have a pairing file that contains paths to the new TXT SAXS and TXT LES data, use **PairTextToHDF5Converter**.
 This option should be used when you have new SAXS and LES datasets to avoid data leakage — meaning the individual VAEs have not seen this data before.
-The pairing file should be a panda dataframe with columns `saxs_path` and `les_path`. 
+The pairing file should be a panda dataframe with columns `saxs_path` and `les_path`.
 
 **Command**
 
@@ -153,54 +141,117 @@ The pairing file should be a panda dataframe with columns `saxs_path` and `les_p
 * Console logs indicating where the files were written and how many pairs were
   processed.
 
-.. _step3-preprocess:
+Step 1 – Pairing HDF5 Converter (create paired dataset + shared splits)
+-----------------------------------------------------------------------
 
-PairingHDF5Converter
-********************
+If you want to use the same datasets for training both the VAE and the
+PairVAE, use the Pairing HDF5 Converter (the script provided in this
+repository is `scripts/04_prepare_pairdataset.py`). This converter can take
+paired TXT paths (or paired HDF5 inputs) and produce a single paired HDF5
+file plus reproducible training/validation splits.
 
-If you want to use the same datasets for training both the VAE and the PairVAE, use PairingHDF5Converter.
-This converter creates data splits (training/validation) before training the VAEs. These same splits are then reused for training the PairVAE, ensuring that training and validation subsets never overlap.
-The splits are save as `.npy` files that you need to inform in the `.yaml` training files as `array_train_indices` and `array_val_indices` for BOTH VAE training and PairVAE training to ensure that the rights splits are always used.
+Why this matters
+~~~~~~~~~~~~~~~~~
 
-**Command**
+Creating and reusing the exact same training and validation splits for both
+VAE and PairVAE training prevents any overlap between the subsets and ensures
+that downstream cross-modal evaluations are fair and comparable.
+
+What the converter produces
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* A paired HDF5 file (for example ``data/pair_all_data.h5``) that contains
+  both modalities in the same dataset.
+* A metadata JSON (for example ``data/pair_metadata_dict.json``) that maps
+  categorical labels.
+* Two ``.npy`` files containing the indices of the training and validation
+  subsets (commonly named ``train_indices.npy`` and ``val_indices.npy``).
+
+How to run
+~~~~~~~~~~
 
 .. code-block:: bash
 
    python scripts/04_prepare_pairdataset.py \
-     --saxs_hdf5_path cylinder_saxs_library_no_noise_meta_diameter.h5 \
-     --les_hdf5_path cylinder_les_meta.h5 \
-     --dir_output pairvae_dataset \
-     --output_hdf5_filename pair_all_data.hdf5
+     --data_csv_path data/metadata_clean.csv \
+     --data_dir data/txt/ \
+     --output_hdf5_filename data/pair_all_data.h5 \
+     --json_output data/pair_metadata_dict.json \
+     --pad_size 900
 
-**Arguments**
+(Depending on the script flags, the converter will write the split arrays to
+the same output folder as the HDF5 or to a configured output directory. Check
+the script's --help output to confirm exact flag names.)
 
-* ``--saxs_hdf5_path`` – HDF5 SAXS path.
-* ``--les_hdf5_path`` – HDF5 LES path.
-* ``--dir_output`` – directory with the npy and HDF5 files are stored.
-* ``--output_hdf5_filename`` – name of HDF5 file.
-* ``--split_train_ratio`` – split ratio >0 and <1..
+Using the splits in your YAML configuration
+-------------------------------------------
 
-**Outputs**
+The converter's ``.npy`` split files must be referenced in your training
+YAMLs so both the standalone VAE runs and the PairVAE run use the exact same
+subsets. In your configuration files, set the dataset fields that reference
+precomputed index arrays. For example:
 
-* ``data/pair_all_data.h5`` – HDF5 dataset containing paired arrays and helper
-  metadata.
-* ``data/train_(pair_saxs_les).npy`` – array containing pair_idx, saxs_idx, les_idx. Used for training.
-* ``data/val_(pair_saxs_les).npy`` – array containing pair_idx, saxs_idx, les_idx. Used for validation.
+.. code-block:: yaml
+
+   dataset:
+     h5_file_path: "data/pair_all_data.h5"
+     array_train_indices: "data/train_indices.npy"
+     array_val_indices: "data/val_indices.npy"
+
+.. important::
+    Supply the same ``array_train_indices`` and ``array_val_indices``
+    paths for BOTH the VAE training configuration and the PairVAE configuration.
+    This ensures the VAE models are trained and validated on the identical sample
+    subsets that the PairVAE later uses to align modalities.
+    ``array_train_indices`` and ``array_val_indices`` contains h5 indices.
+
+Outputs
+~~~~~~~
+
+* ``data/pair_all_data.h5`` – HDF5 dataset containing paired arrays and
+  helper metadata.
+* ``data/pair_metadata_dict.json`` – categorical mapping aligned with the
+  paired dataset.
+* ``train_indices.npy`` and ``val_indices.npy`` – index arrays you must
+  reference in your YAML files as ``array_train_indices`` and
+  ``array_val_indices`` for both VAE and PairVAE training.
+* Console logs indicating where the files were written and how many pairs
+  were processed.
 
 .. tip::
+   * Large pairing runs may take a few minutes; run them in a detached
+     session (tmux/screen) when working on remote machines.
 
-   * When combining modalities, keep a consistent folder structure so both files in
-     a pair can be found relative to ``--data_dir``.
-   * Use a pad size that accommodates the longest modality to avoid truncation.
 
-Step 4 – Train the VAE
+Step 2 – Train the VAE
 ----------------------
 
 **Why this matters:** trains a Variational Autoencoder that can reconstruct a
 single modality (for example SAXS).
 
-.. important::
-   Before training, you must create a proper configuration file.
+.. admonition:: Check the HDF5 file and launch a simple VAE
+   :class: tip
+
+   Before starting a full training, you can quickly verify that your HDF5 file
+   is correct using the utility script ``scripts/utils/H5_check.py``. Example:
+
+   .. code-block:: bash
+
+      # checks the structure and a few entries in the HDF5
+      python scripts/utils/H5_check.py DATA/cylinder_les_meta.h5
+
+   After verification, launch a simple VAE training (``vae`` mode).
+   To test the configuration without starting the actual training, use
+   ``--dry-run``; to start real training, remove ``--dry-run``:
+
+   .. code-block:: bash
+
+      # validate the configuration and paths without training
+      python scripts/03_train.py --config config/vae_les.yaml --mode vae --hdf5_file DATA/cylinder_les_meta.h5 --dry-run
+
+      # start a simple VAE training
+      python scripts/03_train.py --config config/vae_les.yaml --mode vae --hdf5_file DATA/cylinder_les_meta.h5
+
    See :doc:`configuration` for complete parameter reference and examples.
 
 **Command**
@@ -249,15 +300,6 @@ Validate configuration before training:
 
    python scripts/03_train.py --config config/vae_saxs.yaml --dry-run
 
-**Configuration requirements**
-
-Training requires a YAML configuration file that specifies:
-
-* **Model parameters**: architecture, latent dimensions, activation functions
-* **Dataset settings**: metadata columns, data transformations (HDF5 file path can be overridden with ``--hdf5_file``)
-* **Training options**: batch size, learning rate, number of epochs
-* **Logging setup**: output directories, TensorBoard vs MLFlow
-
 **Important note about overrides**
 
 The ``--hdf5_file`` and ``--mode`` arguments allow you to override configuration settings without modifying the YAML file. This is particularly useful for:
@@ -265,6 +307,27 @@ The ``--hdf5_file`` and ``--mode`` arguments allow you to override configuration
 - Testing different datasets with the same model configuration
 - Switching between VAE and PairVAE models with similar parameters
 - Running experiments with different data files in batch scripts
+
+
+**Example configuration structure**::
+
+   experiment_name: "saxs_vae_experiment"
+   run_name: "baseline_run"
+
+   model:
+     type: "vae"  # Can be overridden with --mode
+     latent_dim: 128
+     # ... more parameters
+
+   dataset:
+     h5_file_path: "data/all_data.h5"  # Can be overridden with --hdf5_file
+     # ... more parameters
+
+   training:
+     num_epochs: 100
+     batch_size: 32
+     # ... more parameters
+
 
 **Example configuration structure**::
 
@@ -390,7 +453,7 @@ Generated plots include:
    * Check your HDF5 file structure matches your configuration parameters
 
 
-Step 5 – Train the PairVAE
+Step 3 – Train the PairVAE
 --------------------------
 
 **Why this matters:** trains the cross-domain model that aligns LES and SAXS
@@ -452,7 +515,7 @@ For complete PairVAE configuration examples and all available parameters, refer 
 .. note::
    For detailed information about training outputs, directory structure, and monitoring options, see the training outputs section in Step 3.
 
-Step 6 – Run inference
+Step 4 – Run inference
 ----------------------
 
 **Why this matters:** generates reconstructions or translations from a trained
@@ -500,7 +563,7 @@ checkpoint and saves the results for inspection.
    * If you request ``--plot`` but see no figures, make sure Matplotlib is
      installed in your environment.
 
-Step 7 – Compute validation metrics and SASFit/LES analysis
+Step 5 – Compute validation metrics and SASFit/LES analysis
 -----------------------------------------------------------
 
 **Why this matters:** summarises model quality and optionally runs SASFit to
@@ -556,7 +619,7 @@ recover physical parameters.
      pour ignorer les ajustements physiques.
    * Lower ``--eval_percentage`` if you are prototyping and want faster feedback.
 
-Step 8 – (Optional) Run a grid search
+(Optional) Run a grid search
 -------------------------------------
 
 **Why this matters:** sweeps multiple hyper-parameter combinations to discover
@@ -583,7 +646,8 @@ stronger configurations automatically.
 
 * A directory per trial under the location configured in the YAML file, each
   containing checkpoints and metric summaries.
-* A console table summarising the hyper-parameter combinations that were tried.
+* A console table summarising the hyper-parameter combinations that were
+  tried.
 
 .. tip::
 

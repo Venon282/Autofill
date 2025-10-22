@@ -148,7 +148,8 @@ def validate_config_and_files(config: dict[str, Any], args: argparse.Namespace) 
         return False
     else:
         print("Configuration validation passed!")
-        print("   Ready to start training. Remove --dry-run to begin.")
+        if getattr(args, 'dry_run', False):
+            print("   Ready to start training. Remove --dry-run to begin.")
         return True
 
 

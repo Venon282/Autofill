@@ -55,7 +55,7 @@ class HDF5Dataset(Dataset):
 
             # Sanity check: ensure all q arrays are identical
             first_q = self.data_q[0]
-            for i in tqdm(range(len(self.data_q)), desc="Checking data_q", leave=False):
+            for i in tqdm(range(len(self.data_q)), desc="Sanity checking H5", leave=False):
                 if not np.array_equal(self.data_q[i], first_q):
                     raise AssertionError("All data_q/data_wavelength arrays must be identical")
             self.data_q = first_q

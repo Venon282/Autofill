@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import traceback
 from typing import Any
 
 import yaml
@@ -85,6 +86,7 @@ def main() -> None:
 
     if not args.mode and "model" in config and "type" in config["model"]:
         args.mode = config["model"]["type"]
+    config["model"]["type"] = args.mode
 
     if args.technique and args.technique in TRANSFORM_OVERRIDES:
         config.setdefault("transforms_data", {}).update(TRANSFORM_OVERRIDES[args.technique])
@@ -106,7 +108,8 @@ def main() -> None:
             print("\nTraining interrupted by user")
             sys.exit(1)
         except Exception as e:
-            print(f"Training failed: {e}")
+            print(f"\nTraining failed: {e}")
+            traceback.print_exc()
             sys.exit(1)
 
 

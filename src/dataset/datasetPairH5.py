@@ -51,12 +51,13 @@ class PairHDF5Dataset(Dataset):
         if self.use_data_q:
             first_q_saxs = self.data_q_saxs[0]
             first_q_les = self.data_q_les[0]
-            for i in tqdm(range(len(self.data_q_saxs)), desc="Checking data_q_saxs", leave=False):
-                if not np.array_equal(self.data_q_saxs[i], first_q_saxs):
-                    raise AssertionError(f"data_q_saxs entry {i} differs from entry 0")
-            for i in tqdm(range(len(self.data_q_les)), desc="Checking data_q_les", leave=False):
-                if not np.array_equal(self.data_q_les[i], first_q_les):
-                    raise AssertionError(f"data_q_les entry {i} differs from entry 0")
+            for name, data, first in [
+                ("data_q_saxs", self.data_q_saxs, self.data_q_saxs[0]),
+                ("data_q_les", self.data_q_les, self.data_q_les[0]),
+            ]:
+                for i in tqdm(range(len(data)), desc=f"Sanity checking H5: {name}", leave=False):
+                    if not np.array_equal(data[i], first):
+                        raise AssertionError(f"{name} entry {i} differs from entry 0")
             self.data_q_saxs = first_q_saxs
             self.data_q_les = first_q_les
         else:

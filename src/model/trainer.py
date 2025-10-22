@@ -2,6 +2,7 @@
 
 from importlib import import_module, util
 from pathlib import Path
+import os
 
 import lightning.pytorch as pl
 import numpy as np
@@ -10,24 +11,10 @@ import yaml
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from lightning.pytorch.loggers import MLFlowLogger
 from torch.utils.data import DataLoader
+from uniqpath import unique_path
 
-_UNIQPATH_SPEC = util.find_spec("uniqpath")
-if _UNIQPATH_SPEC is not None:
-    unique_path = import_module("uniqpath").unique_path  # type: ignore[attr-defined]
-else:
-    def unique_path(path: Path) -> Path:
-        """Return a unique, non-existing path based on ``path``."""
+torch.set_float32_matmul_precision('high')
 
-        candidate = Path(path)
-        if not candidate.exists():
-            return candidate
-
-        suffix = 1
-        while True:
-            new_candidate = candidate.parent / f"{candidate.name}_{suffix}"
-            if not new_candidate.exists():
-                return new_candidate
-            suffix += 1
 
 from src.dataset.datasetH5 import HDF5Dataset
 from src.dataset.datasetPairH5 import PairHDF5Dataset
@@ -99,7 +86,7 @@ class TrainPipeline:
             log_path = unique_path(Path(self.config['experiment_name'], self.config['run_name']))
             log_path.mkdir(parents=True)
         else:
-            base_path = Path(self.config['training']['output_dir'])
+            base_path = Path(self.config['training']['output_dir'], self.config['experiment_name'])
             base_path.mkdir(parents=True, exist_ok=True)
             log_path = unique_path(base_path / self.config['run_name'])
             log_path.mkdir(parents=True)
@@ -211,7 +198,7 @@ class TrainPipeline:
             train_dataset, validation_subset = random_split(self.dataset, [train_count, validation_count])
 
         batch_size = self.config['training']['batch_size']
-        num_workers = self.config['training']['num_workers']
+        num_workers = self.config['training'].get('num_workers', min(1, os.cpu_count()))
         if self.verbose:
             print(f"[Data] Creating DataLoaders with batch_size={batch_size}, num_workers={num_workers}")
         training_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
@@ -240,8 +227,8 @@ class TrainPipeline:
         else:
             from lightning.pytorch.loggers import TensorBoardLogger
             self.logger = TensorBoardLogger(
-                save_dir=str(self.log_path.parent),
-                name=self.config['experiment_name'],
+                save_dir=str(self.log_path.parent / "tensorboard_logs"),
+                name=str(self.log_path.name),
                 version=self.config['run_name']
             )
 

@@ -95,9 +95,9 @@ You will have two options:
 
   This option should be used when you have new SAXS and LES datasets to avoid data leakage — meaning the individual VAEs have not seen this data before. The pairing file should be a pandas DataFrame with columns ``saxs_path`` and ``les_path``.
 
-- If you want to use the same datasets for training both the VAE and the PairVAE, use PairingHDF5Converter.
+- If you want to use the same datasets for training both the VAE and the PairVAE, use the Pairing HDF5 converter described in Tutorials (Step 3bis).
 
-  This converter creates data splits (training/validation) before training the VAEs. These same splits are then reused for training the PairVAE, ensuring that training and validation subsets never overlap. The splits are saved as ``.npy`` files that you need to reference in the `.yaml` training files as ``array_train_indices`` and ``array_val_indices``.
+  This converter creates data splits (training/validation) before training the VAEs. These same splits are then reused for training the PairVAE, ensuring that training and validation subsets never overlap. The splits are saved as ``.npy`` files that you need to reference in the `.yaml` training files as ``array_train_indices`` and ``array_val_indices``. See :ref:`step3bis-preprocess` for usage details and example commands.
 
 **File structure:**
 

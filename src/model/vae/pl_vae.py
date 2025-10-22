@@ -23,12 +23,12 @@ class PlVAE(pl.LightningModule):
         self.model = MODEL_REGISTRY.get(model_class)(**self.config["model"]["args"])
         if not force_dataset_q and "data_q" in self.config["model"]:
             setattr(self, "data_q", self.config["model"]["data_q"])
-            print(f"[PlVAE] WARNING: Using data_q from config, not from dataloader!")
+            print(f"[PlVAE] WARNING: Using data_q from config !")
         else:
             if force_dataset_q and "data_q" in self.config["model"]:
                 print(f"[PlVAE] INFO: Forcing use of data_q from dataloader (ignoring config)")
             else:
-                print(f"[PlVAE] WARNING: Using data_q from dataloader, not from config!")
+                print(f"[PlVAE] WARNING: Using data_q from dataloader !")
 
     def forward(self, batch):
         """Forward pass delegating to the configured sub-model."""
