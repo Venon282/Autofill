@@ -2,6 +2,7 @@
 
 from importlib import import_module, util
 from pathlib import Path
+import os
 
 import lightning.pytorch as pl
 import numpy as np
@@ -9,25 +10,11 @@ import torch
 import yaml
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from lightning.pytorch.loggers import MLFlowLogger
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, random_split
+from uniqpath import unique_path
 
-_UNIQPATH_SPEC = util.find_spec("uniqpath")
-if _UNIQPATH_SPEC is not None:
-    unique_path = import_module("uniqpath").unique_path  # type: ignore[attr-defined]
-else:
-    def unique_path(path: Path) -> Path:
-        """Return a unique, non-existing path based on ``path``."""
+torch.set_float32_matmul_precision('high')
 
-        candidate = Path(path)
-        if not candidate.exists():
-            return candidate
-
-        suffix = 1
-        while True:
-            new_candidate = candidate.parent / f"{candidate.name}_{suffix}"
-            if not new_candidate.exists():
-                return new_candidate
-            suffix += 1
 
 from src.dataset.datasetH5 import HDF5Dataset
 from src.dataset.datasetPairH5 import PairHDF5Dataset
@@ -37,6 +24,10 @@ from src.model.callbacks.inference_callback import InferencePlotCallback
 from src.model.callbacks.metrics_callback import MAEMetricCallback
 from src.model.pairvae.pl_pairvae import PlPairVAE
 from src.model.vae.pl_vae import PlVAE
+from src.logging_utils import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class TrainPipeline:
@@ -47,22 +38,30 @@ class TrainPipeline:
         self.verbose = verbose
         self.config = self._set_defaults(config)
         if self.verbose:
-            print("[Pipeline] Loading configuration")
-            print(yaml.dump(self.config, default_flow_style=False, sort_keys=False, allow_unicode=True))
-            print("[Pipeline] Building components")
+            logger.info("Loading configuration")
+            logger.info(
+                "Configuration:\n%s",
+                yaml.dump(
+                    self.config,
+                    default_flow_style=False,
+                    sort_keys=False,
+                    allow_unicode=True,
+                ),
+            )
+            logger.info("Building components")
         self.log_path = self._safe_log_directory()
         self.config['training']['output_dir'] = str(self.log_path)
         self.model, self.dataset, self.extra_callback_list = self._initialize_components()
         self.config['conversion_dict'] = self.dataset.get_conversion_dict()
         if self.verbose:
-            print("[Pipeline] Preparing data loaders")
+            logger.info("Preparing data loaders")
         self.training_loader, self.validation_loader = self._create_data_loaders()
         if self.verbose:
-            print("[Pipeline] Building trainer")
+            logger.info("Building trainer")
         self.trainer = self._configure_trainer()
         self.model.save_hyperparameters()
         if self.verbose:
-            print("[Pipeline] Preparing log directory")
+            logger.info("Preparing log directory")
         self.log_directory = self._setup_log_directory()
 
     def _set_defaults(self, config):
@@ -99,7 +98,7 @@ class TrainPipeline:
             log_path = unique_path(Path(self.config['experiment_name'], self.config['run_name']))
             log_path.mkdir(parents=True)
         else:
-            base_path = Path(self.config['training']['output_dir'])
+            base_path = Path(self.config['training']['output_dir'], self.config['experiment_name'])
             base_path.mkdir(parents=True, exist_ok=True)
             log_path = unique_path(base_path / self.config['run_name'])
             log_path.mkdir(parents=True)
@@ -121,8 +120,8 @@ class TrainPipeline:
             model = PlPairVAE(self.config)
             transform_les = model.get_transforms_data_les()
             transform_saxs = model.get_transforms_data_saxs()
-            print(f"config : {self.config}")
-            print("#" * 50)
+            logger.info("Config: %s", self.config)
+            logger.info("#" * 50)
             dataset = PairHDF5Dataset(**self.config['dataset'],
                                       transformer_q_saxs=Pipeline(transform_saxs["q"]),
                                       transformer_y_saxs=Pipeline(transform_saxs["y"]),
@@ -207,13 +206,21 @@ class TrainPipeline:
             train_count = int(0.8 * total_samples)
             validation_count = total_samples - train_count
             if self.verbose:
-                print(f"[Data] Splitting dataset: train={train_count}, validation={validation_count}")
+                logger.info(
+                    "Splitting dataset: train=%d, validation=%d",
+                    train_count,
+                    validation_count,
+                )
             train_dataset, validation_subset = random_split(self.dataset, [train_count, validation_count])
 
         batch_size = self.config['training']['batch_size']
-        num_workers = self.config['training']['num_workers']
+        num_workers = self.config['training'].get('num_workers', min(1, os.cpu_count()))
         if self.verbose:
-            print(f"[Data] Creating DataLoaders with batch_size={batch_size}, num_workers={num_workers}")
+            logger.info(
+                "Creating DataLoaders with batch_size=%d, num_workers=%d",
+                batch_size,
+                num_workers,
+            )
         training_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
         validation_loader = DataLoader(validation_subset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
         return training_loader, validation_loader
@@ -221,7 +228,7 @@ class TrainPipeline:
     def _configure_trainer(self):
         """Configure callbacks, logging, and return a Lightning trainer."""
         if self.verbose:
-            print("[Trainer] Configuring callbacks and logger")
+            logger.info("Configuring callbacks and logger")
         early_stop_callback = EarlyStopping(monitor='val_loss', patience=self.config['training']['patience'],
                                             min_delta=self.config['training'].get('min_delta', 0.00001), verbose=True,
                                             mode='min')
@@ -240,8 +247,8 @@ class TrainPipeline:
         else:
             from lightning.pytorch.loggers import TensorBoardLogger
             self.logger = TensorBoardLogger(
-                save_dir=str(self.log_path.parent),
-                name=self.config['experiment_name'],
+                save_dir=str(self.log_path.parent / "tensorboard_logs"),
+                name=str(self.log_path.name),
                 version=self.config['run_name']
             )
 
@@ -268,7 +275,7 @@ class TrainPipeline:
             yaml.dump(self.config, file, default_flow_style=False, allow_unicode=True)
 
         if self.verbose:
-            print(f"Fichier YAML sauvegardé dans : {file_path}")
+            logger.info("Fichier YAML sauvegardé dans : %s", file_path)
 
         # Only use MLFlow-specific logging if we have MLFlow logger
         if hasattr(self.trainer.logger, 'experiment') and hasattr(self.trainer.logger.experiment, 'log_artifact'):
@@ -280,8 +287,11 @@ class TrainPipeline:
         np.save(self.log_path / 'train_indices.npy', self.training_loader.dataset.indices)
         np.save(self.log_path / 'val_indices.npy', self.validation_loader.dataset.indices)
         if self.verbose:
-            print(
-                f"Indices sauvegardés dans : {self.log_path / 'train_indices.npy'} et {self.log_path / 'val_indices.npy'}")
+            logger.info(
+                "Indices sauvegardés dans : %s et %s",
+                self.log_path / 'train_indices.npy',
+                self.log_path / 'val_indices.npy',
+            )
 
         # Only use MLFlow-specific logging if we have MLFlow logger
         if hasattr(self.trainer.logger, 'experiment') and hasattr(self.trainer.logger.experiment, 'log_artifact'):
@@ -292,13 +302,13 @@ class TrainPipeline:
 
     def train(self):
         """Launch the Lightning training loop and return the log path."""
-        print("[Pipeline] Starting training")
+        logger.info("Starting training")
         self.trainer.fit(
             self.model,
             train_dataloaders=self.training_loader,
             val_dataloaders=self.validation_loader
         )
-        print("[Pipeline] Training completed")
+        logger.info("Training completed")
         return self.log_path
 
 

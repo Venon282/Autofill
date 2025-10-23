@@ -12,6 +12,10 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 
 from src.dataset.transformations import Pipeline
+from src.logging_utils import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class PairHDF5Dataset(Dataset):
@@ -51,12 +55,13 @@ class PairHDF5Dataset(Dataset):
         if self.use_data_q:
             first_q_saxs = self.data_q_saxs[0]
             first_q_les = self.data_q_les[0]
-            for i in tqdm(range(len(self.data_q_saxs)), desc="Checking data_q_saxs", leave=False):
-                if not np.array_equal(self.data_q_saxs[i], first_q_saxs):
-                    raise AssertionError(f"data_q_saxs entry {i} differs from entry 0")
-            for i in tqdm(range(len(self.data_q_les)), desc="Checking data_q_les", leave=False):
-                if not np.array_equal(self.data_q_les[i], first_q_les):
-                    raise AssertionError(f"data_q_les entry {i} differs from entry 0")
+            for name, data, first in [
+                ("data_q_saxs", self.data_q_saxs, self.data_q_saxs[0]),
+                ("data_q_les", self.data_q_les, self.data_q_les[0]),
+            ]:
+                for i in tqdm(range(len(data)), desc=f"Sanity checking H5: {name}", leave=False):
+                    if not np.array_equal(data[i], first):
+                        raise AssertionError(f"{name} entry {i} differs from entry 0")
             self.data_q_saxs = first_q_saxs
             self.data_q_les = first_q_les
         else:
@@ -108,15 +113,20 @@ class PairHDF5Dataset(Dataset):
 
     def _print_init_info(self):
         """Print dataset initialization information"""
-        print("\n╒══════════════════════════════════════════════╕")
-        print("│ Dataset Initialization Info                 │")
-        print("╞══════════════════════════════════════════════╡")
-        print(f"│ File: {self.hdf5_file:<35} │")
-        print(f"│ Total samples: {len(self.data_y_saxs):<26} │")
-        print(f"│ Samples filtered: {len(self.filtered_indices):<23} │")
-        print(f"│ Requested fraction: {self.sample_frac:<22} │")
-        print(f"│ Fractioned samples: {len(self.filtered_indices):<22} │")
-        print(f"│ Requested metadata: {len(self.requested_metadata):<22} │")
+        info_lines = [
+            "",
+            "╒══════════════════════════════════════════════╕",
+            "│ Dataset Initialization Info                 │",
+            "╞══════════════════════════════════════════════╡",
+            f"│ File: {self.hdf5_file:<35} │",
+            f"│ Total samples: {len(self.data_y_saxs):<26} │",
+            f"│ Samples filtered: {len(self.filtered_indices):<23} │",
+            f"│ Requested fraction: {self.sample_frac:<22} │",
+            f"│ Fractioned samples: {len(self.filtered_indices):<22} │",
+            f"│ Requested metadata: {len(self.requested_metadata):<22} │",
+        ]
+        for line in info_lines:
+            logger.info(line)
 
     def _validate_requested_metadata(self, requested, available):
         """Validate and filter requested metadata columns"""
@@ -211,7 +221,7 @@ class PairHDF5Dataset(Dataset):
             ['data_y_saxs', 'data_y_les'],
             [data_y_saxs, data_y_les]):
             if torch.isnan(arr).any() or torch.isinf(arr).any():
-                raise RuntimeError(f"[PairHDF5Dataset][idx={idx}] {name} contient NaN ou inf!")
+                raise RuntimeError(f"PairHDF5Dataset idx={idx}: {name} contient NaN ou inf!")
 
         batch = {
             "data_y_saxs": data_y_saxs,

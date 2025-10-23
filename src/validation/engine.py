@@ -23,6 +23,10 @@ from src.dataset.transformations import Pipeline
 from src.model.pairvae.pl_pairvae import PlPairVAE
 from src.model.vae.pl_vae import PlVAE
 from src.validation.metrics import BaseFitMetric, FitResult, LesFitMetric, SaxsFitMetric
+from src.logging_utils import get_logger
+
+
+logger = get_logger(__name__)
 
 
 def move_to_device(batch: Any, device: torch.device) -> Any:
@@ -111,8 +115,8 @@ class BaseValidationEngine(ABC):
         self.config = config
         self.model_type = config.get("model", {}).get("type", "unknown")
         self.model_spec = config.get("model", {}).get("spec", "unknown")
-        print(f"[BaseValidationEngine] Model type: {self.model_type}")
-        print(f"[BaseValidationEngine] Model spec: {self.model_spec}")
+        logger.info("Model type: %s", self.model_type)
+        logger.info("Model spec: %s", self.model_spec)
         self.batch_size = batch_size
         self.eval_percentage = eval_percentage
         self.fit_percentage = fit_percentage
@@ -178,7 +182,12 @@ class BaseValidationEngine(ABC):
         n_samples = max(1, int(total_samples * fraction))
         indices = np.random.choice(total_samples, n_samples, replace=False)
         subset = Subset(self.dataset, indices)
-        print(f"[BaseValidationEngine] Using {n_samples} samples out of {total_samples} ({fraction*100:.2f}%)")
+        logger.info(
+            "[BaseValidationEngine] Using %d samples out of %d (%.2f%%)",
+            n_samples,
+            total_samples,
+            fraction * 100,
+        )
         return DataLoader(subset, batch_size=self.batch_size, shuffle=False)
 
     def compute_reconstruction_metrics(self) -> Dict[str, Any]:
@@ -307,7 +316,7 @@ class BaseValidationEngine(ABC):
         if not pred_samples:
             raise ValueError("No prediction samples available for fit metrics.")
         
-        print(f"Collecting fit samples using {self.n_processes} processes...", flush=True)
+        logger.info("Collecting fit samples using %d processes...", self.n_processes)
 
         pred_results = Parallel(n_jobs=self.n_processes)(
             delayed(metric.safe_fit_single)(sample) for sample in pred_samples

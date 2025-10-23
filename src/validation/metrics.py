@@ -8,6 +8,11 @@ import traceback
 import sys
 import numpy as np
 
+from src.logging_utils import get_logger
+
+
+logger = get_logger(__name__)
+
 FitResult = Optional[Tuple[float, float, float, float, float, float, float, float, float]]
 
 
@@ -28,9 +33,11 @@ class BaseFitMetric(ABC):
         except Exception as e:
             tb = traceback.extract_tb(sys.exc_info()[2])[-1]
             filename, lineno, func, text = tb
-            print(f"Warning: Fit failed in {filename}:{lineno} ({func})")
-            print(f"  → Code: {text}")
-            print(f"  → Exception: {type(e).__name__}: {e}")
+            logger.warning(
+                "Fit failed in %s:%s (%s)", filename, lineno, func
+            )
+            logger.warning("  → Code: %s", text)
+            logger.warning("  → Exception: %s: %s", type(e).__name__, e)
             return None
 
 

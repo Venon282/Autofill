@@ -45,10 +45,14 @@ Installation
 
       cd AutoFill
 
-      uv pip install -r requirements.txt
+      uv sync
+      # This will create a virtual environment and install all dependencies
 
    .. tip::
-      `uv` is a fast Python package installer that can significantly speed up dependency installation. If you don't have `uv` installed, you can install it with ``pip install uv`` or follow the installation guide at https://github.com/astral-sh/uv
+      ``uv`` is a fast Python package installer that can significantly speed up dependency installation. If you don't have ``uv`` installed, you can install it with ``pip install uv`` or follow the installation guide at `uv docs <https://github.com/astral-sh/uv>`_
+
+   .. tip::
+      You can use ``uv run <script>`` to run Python scripts within the uv environment without activating it explicitly. See `uv run docs <https://docs.astral.sh/uv/guides/scripts/#running-a-script-with-dependencies>`_
 
 Quick start workflow
 --------------------

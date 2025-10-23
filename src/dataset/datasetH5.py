@@ -12,6 +12,10 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 
 from src.dataset.transformations import Pipeline
+from src.logging_utils import get_logger
+
+
+logger = get_logger(__name__)
 
 DEFAULT_LENGTH_DATA = 1000
 
@@ -55,7 +59,7 @@ class HDF5Dataset(Dataset):
 
             # Sanity check: ensure all q arrays are identical
             first_q = self.data_q[0]
-            for i in tqdm(range(len(self.data_q)), desc="Checking data_q", leave=False):
+            for i in tqdm(range(len(self.data_q)), desc="Sanity checking H5", leave=False):
                 if not np.array_equal(self.data_q[i], first_q):
                     raise AssertionError("All data_q/data_wavelength arrays must be identical")
             self.data_q = first_q
@@ -113,7 +117,12 @@ class HDF5Dataset(Dataset):
 
     def _print_init_info(self):
         """Display dataset loading summary."""
-        print(f"[HDF5Dataset] File: {self.hdf5_file} | Filtered samples: {len(self.filtered_indices)} / {len(self.data_y)}")
+        logger.info(
+            "Loaded %s with %d filtered samples out of %d",
+            self.hdf5_file,
+            len(self.filtered_indices),
+            len(self.data_y),
+        )
 
     def _validate_requested_metadata(self, requested, available):
         """Validate and filter requested metadata columns."""

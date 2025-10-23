@@ -12,7 +12,6 @@ dataset:
 training:
   output_dir: "/projects/pnria/caroline/AUTOFILL/pair_vae/runs/"
   num_gpus: 1
-  num_nodes: 1
   num_epochs: 250
   warmup_epochs: 5
   patience: 20
@@ -25,11 +24,11 @@ training:
   weighted_loss_limit_index: 400
 
   lambda_param: 0.005
-  weight_latent_similarity: 0.0001
-  weight_les2les: 0.5
-  weight_les2saxs: 5
-  weight_saxs2les: 5
-  weight_saxs2saxs: 0.5
+  weight_latent_similarity: 1.0e-05
+  weight_les2les: 1
+  weight_les2saxs: 1
+  weight_saxs2les: 1
+  weight_saxs2saxs: 1
 
   max_lr: 1.0e-05
 

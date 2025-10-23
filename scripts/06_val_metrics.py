@@ -9,7 +9,10 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.validation.engine import ValidationEngine
 from src.validation.utils.utils import display_validation_results
-from pprint import pprint
+from src.logging_utils import get_logger
+
+
+logger = get_logger(__name__)
 
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
@@ -57,7 +60,7 @@ def main() -> None:
     )
 
     results = engine.run()
-    print("Validation completed.")
+    logger.info("Validation completed.")
     display_validation_results(results)
 
 

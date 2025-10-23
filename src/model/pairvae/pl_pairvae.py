@@ -7,8 +7,12 @@ import torch
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import LambdaLR
 
+from src.logging_utils import get_logger
 from src.model.pairvae.loss import BarlowTwinsLoss
 from src.model.pairvae.pairvae import PairVAE
+
+
+logger = get_logger(__name__)
 
 
 class PlPairVAE(pl.LightningModule):
@@ -34,12 +38,15 @@ class PlPairVAE(pl.LightningModule):
             if not force_dataset_q and config_key in self.config["model"]:
                 assert  self.config['model'][config_key] is not None, f"{config_key} in config cannot be None if used."
                 setattr(self, config_key, self.config['model'][config_key])
-                print(f"[PlPairVAE] WARNING: Using {config_key} from config!")
+                logger.warning("Using %s from configuration", config_key)
             else:
                 if force_dataset_q and config_key in self.config["model"]:
-                    print(f"[PlPairVAE] INFO: Forcing use of {config_key} from dataloader (ignoring config)")
+                    logger.info(
+                        "Forcing use of %s from dataloader (ignoring configuration value)",
+                        config_key,
+                    )
                 else:
-                    print(f"[PlPairVAE] WARNING: Using {config_key} from dataloader!")
+                    logger.warning("Using %s provided by the dataloader", config_key)
 
     def forward(self, batch):
         return self.model(batch)

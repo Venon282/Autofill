@@ -11,11 +11,19 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import sys
 from pathlib import Path
 from typing import Iterable
 
 import pandas as pd
 from tqdm import tqdm
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from src.logging_utils import get_logger
+
+
+logger = get_logger(__name__)
 
 
 def extract_dimensions(value: str) -> tuple[float | None, float | None]:
@@ -97,8 +105,8 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
     merged_df = process_csv_files(args.inputs, args.output, sep=args.sep)
-    print(f"Merged CSV saved to: {args.output}")
-    print(f"Total rows written: {len(merged_df)}")
+    logger.info("Merged CSV saved to: %s", args.output)
+    logger.info("Total rows written: %d", len(merged_df))
 
 
 if __name__ == "__main__":

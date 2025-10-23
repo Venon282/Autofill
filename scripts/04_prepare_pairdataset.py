@@ -6,6 +6,7 @@ import argparse
 import json
 import math
 import os
+import sys
 import warnings
 from pathlib import Path
 from typing import Iterable
@@ -15,6 +16,13 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 import random
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from src.logging_utils import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class PairTextToHDF5Converter:
@@ -226,147 +234,183 @@ class PairTextToHDF5Converter:
         with open(self.json_output_path, "w", encoding="utf-8") as handle:
             json.dump(self.conversion_dict, handle, ensure_ascii=False, indent=2)
 
-        print(f"HDF5 dataset written to: {output_file}")
-        print(f"Metadata dictionary written to: {self.json_output_path}")
+        logger.info("HDF5 dataset written to: %s", output_file)
+        logger.info("Metadata dictionary written to: %s", self.json_output_path)
 
 class PairingHDF5Converter:
-    """Convert HDF5 LES and SAXS files into a single HDF5 dataset with splits."""
+    """
+    Convert LES and SAXS HDF5 files into a single combined HDF5 dataset
+    with corresponding training and validation splits.
+    """
 
-    def __init__(self, saxs_hdf5_path, les_hdf5_path, dir_output, output_hdf5_filename, split_train_ratio=0.8):
+    def __init__(self, saxs_hdf5_path, les_hdf5_path, output_dir, output_filename, split_train_ratio=0.8, split_test_ratio=0.0):
+        """
+        Initialize converter with input HDF5 paths and output settings.
 
-        self.hdf_saxs = h5py.File(saxs_hdf5_path, 'r', swmr=True)
-        self.hdf_les = h5py.File(les_hdf5_path, 'r')
+        Args:
+            saxs_hdf5_path (str): Path to the SAXS HDF5 file.
+            les_hdf5_path (str): Path to the LES HDF5 file.
+            output_dir (str): Output directory where results will be saved.
+            output_filename (str): Name of the output combined HDF5 file.
+            split_train_ratio (float): Ratio of pairs to include in the training set.
+            split_test_ratio (float): Ratio of pairs to include in the test set.
+        """
+        self.hdf_saxs = h5py.File(saxs_hdf5_path, "r", swmr=True)
+        self.hdf_les = h5py.File(les_hdf5_path, "r")
 
-        self.dir_output = dir_output
-        self.output_hdf5 = output_hdf5_filename
-
+        self.output_dir = output_dir
+        self.output_filename = output_filename
         self.split_train_ratio = split_train_ratio
+        self.split_test_ratio = split_test_ratio
+
+    def _get_concentration(self, hdf_obj):
+        """
+        Retrieve concentration data from an HDF5 file, supporting multiple key names.
+        """
+        if "concentration_original" in hdf_obj:
+            concentration = hdf_obj["concentration_original"][:]
+        elif "concentration" in hdf_obj:
+            concentration = hdf_obj["concentration"][:]
+        else:
+            raise KeyError("No concentration key found in HDF5 file (expected 'concentration_original' or 'concentration').")
+
+        return np.round(concentration, -3).astype(int)
+
+    def _get_q_values(self, hdf_obj):
+        """
+        Retrieve q/wavelength values from an HDF5 file, supporting multiple key names.
+        """
+        if "data_q" in hdf_obj:
+            return hdf_obj["data_q"][:]
+        elif "data_wavelength" in hdf_obj:
+            return hdf_obj["data_wavelength"][:]
+        else:
+            raise KeyError("No q/wavelength key found in HDF5 file (expected 'data_q' or 'data_wavelength').")
+
+    def _extract_dataset(self, hdf_obj):
+        """
+        Extract data dictionaries from a given HDF5 object.
+
+        Args:
+            hdf_obj (h5py.File): The HDF5 object to extract data from.
+
+        Returns:
+            tuple: (dict_meta, dict_y, dict_q)
+        """
+        csv_index = hdf_obj["csv_index"][:]
+        length_nm = hdf_obj["length_nm"][:]
+        diameter_nm = hdf_obj["diameter_nm"][:]
+        concentration = self._get_concentration(hdf_obj)
+        q_values = self._get_q_values(hdf_obj)
+
+        dict_meta = {
+            int(idx): (float(length), float(conc), float(diameter))
+            for idx, length, conc, diameter in zip(csv_index, length_nm, concentration, diameter_nm)
+        }
+
+        dict_y = {int(idx): y for idx, y in zip(csv_index, hdf_obj["data_y"][:])}
+        dict_q = {int(idx): q for idx, q in zip(csv_index, q_values)}
+
+        return dict_meta, dict_y, dict_q
 
     def _extract_data(self):
-        csv_index_saxs = self.hdf_saxs["csv_index"][:]
-        length_nm_saxs = self.hdf_saxs["length_nm"][:]
-        concentration_original_saxs = self.hdf_saxs["concentration_original"][:]
-        concentration_original_saxs = np.round(concentration_original_saxs, -3).astype(int)
-        diameter_nm_saxs = self.hdf_saxs["diameter_nm"][:]
-
-        dict_saxs = {int(csv_index): (float(length), float(conc), float(radius))
-            for csv_index, length, conc, radius in zip(
-                csv_index_saxs, length_nm_saxs, concentration_original_saxs, diameter_nm_saxs)}
-        dict_saxs_y_values = {int(csv_index): y_values
-            for csv_index, y_values in zip(
-                csv_index_saxs, self.hdf_saxs["data_y"][:])}
-        dict_saxs_q_values = {
-            int(csv_index): q_values
-            for csv_index, q_values in zip(
-                csv_index_saxs, self.hdf_saxs["data_q"][:])}
-
-        csv_index_les = self.hdf_les["csv_index"][:]
-        length_nm_les = self.hdf_les["length_nm"][:]
-        concentration_original_les = self.hdf_les["concentration"][:]
-        concentration_original_les = np.round(concentration_original_les, -3).astype(int)
-        diameter_nm_les = self.hdf_les["diameter_nm"][:]
-
-        dict_les = {int(csv_index): (float(length), float(conc), float(radius))
-            for csv_index, length, conc, radius in zip(
-                csv_index_les, length_nm_les, concentration_original_les, diameter_nm_les)}
-        dict_les_y_values = {int(csv_index): y_values
-            for csv_index, y_values in zip(
-                csv_index_les, self.hdf_les["data_y"][:])}
-        dict_les_q_values = {
-            int(csv_index): q_values
-            for csv_index, q_values in zip(
-                csv_index_les, self.hdf_les["data_wavelength"][:])}
-
-        return dict_saxs, dict_saxs_y_values, dict_saxs_q_values, dict_les, dict_les_y_values, dict_les_q_values
+        """Extract and structure data from SAXS and LES HDF5 files."""
+        dict_saxs, dict_saxs_y, dict_saxs_q = self._extract_dataset(self.hdf_saxs)
+        dict_les, dict_les_y, dict_les_q = self._extract_dataset(self.hdf_les)
+        return dict_saxs, dict_saxs_y, dict_saxs_q, dict_les, dict_les_y, dict_les_q
 
     def _split_dataset(self, dict_saxs, dict_les):
+        """
+        Match SAXS and LES entries based on identical metadata tuples,
+        then split them into training and validation sets.
 
-        inverse_dict_les = {v:k for k,v in dict_les.items()}
-        inverse_dict_saxs = {v:k for k,v in dict_saxs.items()}
+        Returns:
+            list: List of all paired tuples (index_pair, csv_index_saxs, csv_index_les)
+        """
+        inverse_les = {v: k for k, v in dict_les.items()}
+        inverse_saxs = {v: k for k, v in dict_saxs.items()}
 
-        # Liste des paires
-        paires_saxs_les = []
-        sans_paire_saxs = []
-        sans_paire_les = []
-        index_pair = 0
-        for k_saxs, v_saxs in dict_saxs.items():
-            if v_saxs in inverse_dict_les:
-                paires_saxs_les.append((index_pair, k_saxs, inverse_dict_les[v_saxs]))
-                index_pair+=1
+        pairs, unpaired_saxs, unpaired_les = [], [], []
+        pair_index = 0
+
+        for saxs_idx, saxs_values in dict_saxs.items():
+            if saxs_values in inverse_les:
+                pairs.append((pair_index, saxs_idx, inverse_les[saxs_values]))
+                pair_index += 1
             else:
-                sans_paire_saxs.append(k_saxs)
-        for k_les, v_les in dict_les.items():
-            if v_les not in inverse_dict_saxs:
-                sans_paire_les.append(k_les)
+                unpaired_saxs.append(saxs_idx)
 
-        if len(sans_paire_les)>0 or len(sans_paire_saxs)>0:
-            print("ERROR PAIRING : Some data were not paired")
+        for les_idx, les_values in dict_les.items():
+            if les_values not in inverse_saxs:
+                unpaired_les.append(les_idx)
 
-        # Splitting
-        random.shuffle(paires_saxs_les)
-        # Calcul de la taille du train
-        n_train = int(self.split_train_ratio * len(paires_saxs_les))
-        # Split
-        train = paires_saxs_les[:n_train]
-        val = paires_saxs_les[n_train:]
+        if unpaired_saxs or unpaired_les:
+            logger.warning(
+                "Some entries could not be paired between SAXS and LES datasets."
+            )
 
-        print("Nombre de paires train :", len(train))
-        print("Nombre de paires val   :", len(val))
-        # Exemple : train et val sont des listes de paires
+        random.shuffle(pairs)
+        n_train = int(self.split_train_ratio * len(pairs))
+        n_test = int(self.split_test_ratio * len(pairs))
+        n_val = len(pairs) - n_train - n_test
 
-        os.makedirs(self.dir_output, exist_ok=True)
-        np.save(f"{self.dir_output}/train_(pair_saxs_les).npy", np.array(train, dtype=object))
-        np.save(f"{self.dir_output}/val_(pair_saxs_les).npy", np.array(val, dtype=object))
+        train_pairs = pairs[:n_train]
+        val_pairs = pairs[n_train:n_train + n_val]
+        test_pairs = pairs[n_train + n_val:]
 
-        return paires_saxs_les
+        logger.info("Training pairs: %d", len(train_pairs))
+        logger.info("Validation pairs: %d", len(val_pairs))
+        logger.info("Test pairs: %d", len(test_pairs))
 
-    def _compose_hdf5(self, paires_saxs_les, dict_saxs_y_values, dict_saxs_q_values, dict_les_y_values, dict_les_q_values):
+        os.makedirs(self.output_dir, exist_ok=True)
+        np.save(os.path.join(self.output_dir, "train_pairs_saxs_les.npy"), np.array(train_pairs, dtype=object))
+        np.save(os.path.join(self.output_dir, "val_pairs_saxs_les.npy"), np.array(val_pairs, dtype=object))
+        if n_test > 0:
+            np.save(os.path.join(self.output_dir, "test_pairs_saxs_les.npy"), np.array(test_pairs, dtype=object))
 
-        combined_data_y_saxs = []
-        combined_data_q_saxs = []
-        combined_data_y_les = []
-        combined_data_q_les = []
-        csv_index_pair_list = []
-        csv_index_saxs_list = []
-        csv_index_les_list = []
+        return pairs
 
-        # Parcourir les triplets avec barre de progression
-        for index_pair, csv_idx_saxs, csv_idx_les in tqdm(paires_saxs_les, desc="Traitement des paires"):
-            # Ajouter les données aux listes
-            combined_data_y_saxs.append(dict_saxs_y_values[csv_idx_saxs])
-            combined_data_q_saxs.append(dict_saxs_q_values[csv_idx_saxs])
-            combined_data_y_les.append(dict_les_y_values[csv_idx_les])
-            combined_data_q_les.append(dict_les_q_values[csv_idx_les])
-            csv_index_pair_list.append(index_pair)
-            csv_index_saxs_list.append(csv_idx_saxs)
-            csv_index_les_list.append(csv_idx_les)
+    def _compose_hdf5(self, pairs, dict_saxs_y, dict_saxs_q, dict_les_y, dict_les_q):
+        """
+        Combine paired SAXS and LES data into a new HDF5 file.
 
-        # Convertir en arrays
-        combined_data_y_saxs = np.vstack(combined_data_y_saxs).astype(float)
-        combined_data_q_saxs = np.vstack(combined_data_q_saxs).astype(float)
-        combined_data_y_les = np.vstack(combined_data_y_les).astype(float)
-        combined_data_q_les = np.vstack(combined_data_q_les).astype(float)
-        csv_index_pair_list = np.array(csv_index_pair_list)
-        csv_index_saxs_list = np.array(csv_index_saxs_list)
-        csv_index_les_list = np.array(csv_index_les_list)
+        Args:
+            pairs (list): List of (pair_index, csv_idx_saxs, csv_idx_les) tuples.
+        """
+        y_saxs, q_saxs, y_les, q_les = [], [], [], []
+        idx_pairs, idx_saxs, idx_les = [], [], []
 
-        # Créer le nouveau HDF5
-        with h5py.File(f"{self.dir_output}/{self.output_hdf5}", 'w') as f_out:
-            f_out.create_dataset('data_y_saxs', data=combined_data_y_saxs)
-            f_out.create_dataset('data_q_saxs', data=combined_data_q_saxs)
-            f_out.create_dataset('data_y_les', data=combined_data_y_les)
-            f_out.create_dataset('data_q_les', data=combined_data_q_les)
-            f_out.create_dataset('csv_index', data=csv_index_pair_list)
-            f_out.create_dataset('csv_index_saxs', data=csv_index_saxs_list)
-            f_out.create_dataset('csv_index_les', data=csv_index_les_list)
+        for pair_idx, saxs_idx, les_idx in tqdm(pairs, desc="Processing pairs"):
+            y_saxs.append(dict_saxs_y[saxs_idx])
+            q_saxs.append(dict_saxs_q[saxs_idx])
+            y_les.append(dict_les_y[les_idx])
+            q_les.append(dict_les_q[les_idx])
+            idx_pairs.append(pair_idx)
+            idx_saxs.append(saxs_idx)
+            idx_les.append(les_idx)
+
+        data = {
+            "data_y_saxs": np.vstack(y_saxs).astype(float),
+            "data_q_saxs": np.vstack(q_saxs).astype(float),
+            "data_y_les": np.vstack(y_les).astype(float),
+            "data_q_les": np.vstack(q_les).astype(float),
+            "csv_index": np.array(idx_pairs),
+            "csv_index_saxs": np.array(idx_saxs),
+            "csv_index_les": np.array(idx_les),
+        }
+
+        output_path = os.path.join(self.output_dir, self.output_filename)
+        with h5py.File(output_path, "w") as f_out:
+            for key, val in data.items():
+                f_out.create_dataset(key, data=val)
+
+        logger.info("Combined HDF5 saved to: %s", output_path)
 
     def convert(self):
-        """Execute the concatenation and save both HDF5 file and npy split files."""
-
-        dict_saxs, dict_saxs_y_values, dict_saxs_q_values, dict_les, dict_les_y_values, dict_les_q_values = self._extract_data()
-        paires_saxs_les = self._split_dataset(dict_saxs, dict_les)
-        self._compose_hdf5(paires_saxs_les, dict_saxs_y_values, dict_saxs_q_values, dict_les_y_values, dict_les_q_values)
-
+        """Execute the full conversion pipeline."""
+        dict_saxs, dict_saxs_y, dict_saxs_q, dict_les, dict_les_y, dict_les_q = self._extract_data()
+        pairs = self._split_dataset(dict_saxs, dict_les)
+        self._compose_hdf5(pairs, dict_saxs_y, dict_saxs_q, dict_les_y, dict_les_q)
 
 def build_parser() -> argparse.ArgumentParser:
     """Expose the converter via a command-line interface."""
@@ -384,6 +428,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--les_hdf5_path", type=str, default="data_les.h5", help="HDF5 LES path.")
     parser.add_argument("--dir_output", type=str, default="output_pairvar_dataset/", help="Destination for HDF5 and splits.")
     parser.add_argument("--split_train_ratio", type=float, default=0.8, help="Split ratio for training subset.")
+    parser.add_argument("--split_test_ratio", type=float, default=0.0, help="Split ratio for test subset.")
 
     parser.add_argument("--output_hdf5_filename", type=str, default="data.h5", help="Destination HDF5 filename.")
     return parser
@@ -412,9 +457,10 @@ def main() -> None:
         converter = PairingHDF5Converter(
             saxs_hdf5_path=args.saxs_hdf5_path,
             les_hdf5_path=args.les_hdf5_path,
-            dir_output=args.dir_output,
-            output_hdf5_filename=args.output_hdf5_filename,
+            output_dir=args.dir_output,
+            output_filename=args.output_hdf5_filename,
             split_train_ratio=args.split_train_ratio,
+            split_test_ratio=args.split_test_ratio,
         )
     converter.convert()
 

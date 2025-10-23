@@ -11,6 +11,10 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 
 from src.dataset.transformations import Pipeline
+from src.logging_utils import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class TXTDataset(Dataset):
@@ -78,7 +82,7 @@ class TXTDataset(Dataset):
         q_data= []
         y_data = []
         if self.transformer_q.is_fitted() and self.transformer_y.is_fitted():
-            print("[DATASETTXT] Transformers already fitted, skipping fitting.")
+            logger.info("Transformers already fitted; skipping fitting")
             return
         for file_path in tqdm(self.dataframe['path'], desc="Fitting transformers"):
             file_path = self.data_dir / file_path

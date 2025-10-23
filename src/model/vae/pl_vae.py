@@ -5,7 +5,11 @@ import torch
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
+from src.logging_utils import get_logger
 from src.model.vae.submodel.registry import *
+
+
+logger = get_logger(__name__)
 
 
 class PlVAE(pl.LightningModule):
@@ -23,12 +27,12 @@ class PlVAE(pl.LightningModule):
         self.model = MODEL_REGISTRY.get(model_class)(**self.config["model"]["args"])
         if not force_dataset_q and "data_q" in self.config["model"]:
             setattr(self, "data_q", self.config["model"]["data_q"])
-            print(f"[PlVAE] WARNING: Using data_q from config, not from dataloader!")
+            logger.warning("Using data_q from configuration")
         else:
             if force_dataset_q and "data_q" in self.config["model"]:
-                print(f"[PlVAE] INFO: Forcing use of data_q from dataloader (ignoring config)")
+                logger.info("Forcing use of data_q from dataloader (ignoring configuration value)")
             else:
-                print(f"[PlVAE] WARNING: Using data_q from dataloader, not from config!")
+                logger.warning("Using data_q provided by the dataloader")
 
     def forward(self, batch):
         """Forward pass delegating to the configured sub-model."""

@@ -4,9 +4,20 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
+import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Iterable, List
+
+sys.path.append(
+    os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
+)
+
+from src.logging_utils import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class CSVLoader:
@@ -60,7 +71,9 @@ class CSVAnalyzer:
         count = 0
         for key, values in groups.items():
             if len(values) > 1:
-                print(f"Correlation for '{variable}' with metadata key {key}: {values}")
+                logger.info(
+                    "Correlation for '%s' with metadata key %s: %s", variable, key, values
+                )
                 count += 1
         return count
 
@@ -84,33 +97,33 @@ def main() -> None:
 
     analyzer = CSVAnalyzer(data)
     if analyzer.total == 0:
-        print("CSV file is empty.")
+        logger.warning("CSV file is empty.")
         return
 
     count_material = analyzer.count_individual("material")
     count_technique = analyzer.count_individual("technique")
     count_shape = analyzer.count_individual("shape")
 
-    print("== Individual distributions ==")
-    print("Material:")
+    logger.info("== Individual distributions ==")
+    logger.info("Material:")
     for key, value in sorted(count_material.items()):
         pct = value / analyzer.total * 100
-        print(f"  - {key}: {value} ({pct:.2f}%)")
+        logger.info("  - %s: %d (%.2f%%)", key, value, pct)
 
-    print("\nTechnique:")
+    logger.info("\nTechnique:")
     for key, value in sorted(count_technique.items()):
         pct = value / analyzer.total * 100
-        print(f"  - {key}: {value} ({pct:.2f}%)")
+        logger.info("  - %s: %d (%.2f%%)", key, value, pct)
 
-    print("\nShape:")
+    logger.info("\nShape:")
     for key, value in sorted(count_shape.items()):
         pct = value / analyzer.total * 100
-        print(f"  - {key}: {value} ({pct:.2f}%)")
+        logger.info("  - %s: %d (%.2f%%)", key, value, pct)
 
-    print("\n== Correlation analysis ==")
-    print(f"Shape correlations: {analyzer.count_correlations('shape')}")
-    print(f"Material correlations: {analyzer.count_correlations('material')}")
-    print(f"Technique correlations: {analyzer.count_correlations('technique')}")
+    logger.info("\n== Correlation analysis ==")
+    logger.info("Shape correlations: %d", analyzer.count_correlations("shape"))
+    logger.info("Material correlations: %d", analyzer.count_correlations("material"))
+    logger.info("Technique correlations: %d", analyzer.count_correlations("technique"))
 
 
 if __name__ == "__main__":

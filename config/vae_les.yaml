@@ -1,9 +1,9 @@
-experiment_name: "AUTOFILL_LES_1000"
+experiment_name: "AUTOFILL_LES"
 run_name: les_cylinder_ag
-mlflow_uri: https://mlflowts.irit.fr/
+#mlflow_uri: https://mlflowts.irit.fr/
 dataset:
   conversion_dict:
-  hdf5_file: /projects/pnria/caroline/AUTOFILL/data_sept_25/AUTOFILL_code_LES_cylindre_Ag/cylinder_les_meta.h5
+  hdf5_file: DATA/cylinder_les_meta.h5
   metadata_filters:
   requested_metadata:
   sample_frac: 1.0
@@ -16,22 +16,22 @@ transforms_data:
       pad_size: 1000
 
 training:
-  array_train_indices: /projects/pnria/DATA/AUTOFILL/train_(pair_saxs_les).npy
-  array_val_indices: /projects/pnria/DATA/AUTOFILL/val_(pair_saxs_les).npy
+  array_train_indices: DATA/train_pairs_saxs_les.npy
+  array_val_indices: DATA/val_pairs_saxs_les.npy
   weighted_loss : False
   weighted_loss_limit_index: 
   T_max: 100
   batch_size: 8
-  beta: 1.0e-05
+  beta: 1.0e-06
   eta_min: 1.0e-10
-  max_lr: 1.0e-04
+  max_lr: 0.0001
   num_epochs: 300
   num_gpus: 1
   num_nodes: 1
-  num_workers: 1
   patience: 40
   use_loglog: false
   min_delta: 0.00001
+
 
 model:
   vae_class: ResVAEBN
@@ -40,7 +40,7 @@ model:
     output_channels: 1
     dilation: 1
     input_dim: 1000
-    latent_dim: 128
+    latent_dim: 64
     down_channels: [8, 16, 32, 64, 128, 256, 512]
     up_channels: [ 512, 256, 128, 64, 32, 16, 8]
     strat: "y"

@@ -3,10 +3,21 @@
 from __future__ import annotations
 
 import argparse
+import os
+import sys
 from pathlib import Path
 
 import pandas as pd
 from tqdm import tqdm
+
+sys.path.append(
+    os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
+)
+
+from src.logging_utils import get_logger
+
+
+logger = get_logger(__name__)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -32,17 +43,17 @@ def check_paths(csv_path: Path, base_dir: Path) -> dict[str, list[str]]:
 
     dataframe = pd.read_csv(csv_path)
     path_columns = [col for col in dataframe.columns if "path" in col.lower() and "optical" not in col.lower()]
-    print(f"Columns containing paths: {path_columns}")
+    logger.info("Columns containing paths: %s", path_columns)
 
     missing_per_column: dict[str, list[str]] = {}
     for column in path_columns:
-        print(f"\n--- Checking column: {column} ---")
+        logger.info("\n--- Checking column: %s ---", column)
         paths = dataframe[column].astype(str).apply(normalize_path)
         missing: list[str] = []
 
-        print(f"Total files to verify: {len(paths)}")
+        logger.info("Total files to verify: %d", len(paths))
         preview = [str(p) for p in paths.head(5) if p is not None]
-        print(f"First few entries: {preview}...")
+        logger.info("First few entries: %s...", preview)
 
         for rel_path in tqdm(paths, desc=f"Verifying ({column})"):
             if rel_path is None:
@@ -50,11 +61,11 @@ def check_paths(csv_path: Path, base_dir: Path) -> dict[str, list[str]]:
             cleaned = rel_path.as_posix().lstrip("/")
             full_path = base_dir / cleaned
             if not full_path.exists():
-                print(f"Missing file: {full_path}")
+                logger.warning("Missing file: %s", full_path)
                 missing.append(cleaned)
 
         missing_per_column[column] = missing
-        print(f"Missing files for {column}: {len(missing)} / {len(paths)}")
+        logger.info("Missing files for %s: %d / %d", column, len(missing), len(paths))
 
     return missing_per_column
 
@@ -67,9 +78,9 @@ def main() -> None:
 
     missing = check_paths(Path(args.csv), Path(args.basedir))
 
-    print("\n--- Summary ---")
+    logger.info("\n--- Summary ---")
     for column, paths in missing.items():
-        print(f"{column}: {len(paths)} missing files")
+        logger.info("%s: %d missing files", column, len(paths))
 
 
 if __name__ == "__main__":

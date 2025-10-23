@@ -1,5 +1,11 @@
 from tabulate import tabulate
 
+from src.logging_utils import get_logger
+
+
+logger = get_logger(__name__)
+
+
 def display_validation_results(results: dict):
     """Affiche les résultats de validation dans un format structuré.
     - Les grandes valeurs sont en notation scientifique (e-n)
@@ -20,12 +26,16 @@ def display_validation_results(results: dict):
         except Exception:
             return str(v)
 
-    print("\n=== Résumé de la validation ===\n")
-    print(f"Model type : {results.get('model_type')}")
-    print(f"Model spec : {results.get('model_spec')}")
-    print(f"Checkpoint : {results.get('checkpoint_path')}")
-    print(f"Data path  : {results.get('data_path')}")
-    print(f"Samples évalués : {results.get('samples_evaluated')} / {results.get('points_evaluated')} points\n")
+    logger.info("\n=== Résumé de la validation ===\n")
+    logger.info("Model type : %s", results.get('model_type'))
+    logger.info("Model spec : %s", results.get('model_spec'))
+    logger.info("Checkpoint : %s", results.get('checkpoint_path'))
+    logger.info("Data path  : %s", results.get('data_path'))
+    logger.info(
+        "Samples évalués : %s / %s points\n",
+        results.get('samples_evaluated'),
+        results.get('points_evaluated'),
+    )
 
     # Métriques globales
     global_metrics = [
@@ -35,9 +45,12 @@ def display_validation_results(results: dict):
         ["R²", results.get("global_r2")],
     ]
     global_metrics_fmt = [[k, format_val(v)] for k, v in global_metrics]
-    print("=== Métriques globales ===")
-    print(tabulate(global_metrics_fmt, headers=["Metric", "Value"], tablefmt="grid"))
-    print()
+    logger.info("=== Métriques globales ===")
+    logger.info(
+        "%s",
+        tabulate(global_metrics_fmt, headers=["Metric", "Value"], tablefmt="grid"),
+    )
+    logger.info("")
 
     # Métriques de fit (affichage décimal normal)
     fit_metrics = [
@@ -49,9 +62,12 @@ def display_validation_results(results: dict):
         ["Fit length MAE ratio", results.get("fit_length_mae_ratio")],
     ]
     fit_metrics_fmt = [[k, format_val(v, sci_threshold=1e9)] for k, v in fit_metrics]
-    print("=== Détails du fit ===")
-    print(tabulate(fit_metrics_fmt, headers=["Paramètre", "Valeur"], tablefmt="grid"))
-    print()
+    logger.info("=== Détails du fit ===")
+    logger.info(
+        "%s",
+        tabulate(fit_metrics_fmt, headers=["Paramètre", "Valeur"], tablefmt="grid"),
+    )
+    logger.info("")
 
     # Erreurs par variable — ici on autorise la notation scientifique
     variables = ["concentration", "diameter_nm", "length_nm"]
@@ -66,18 +82,26 @@ def display_validation_results(results: dict):
             format_val(results.get(f"rmse_{var}_pred")),
             format_val(results.get(f"rmse_{var}_true")),
         ])
-    print("=== Erreurs par variable ===")
-    print(tabulate(metrics_table,
-                   headers=["Variable", "MAE_pred", "MAE_true", "MSE_pred", "MSE_true", "RMSE_pred", "RMSE_true"],
-                   tablefmt="grid"))
-    print()
+    logger.info("=== Erreurs par variable ===")
+    logger.info(
+        "%s",
+        tabulate(
+            metrics_table,
+            headers=["Variable", "MAE_pred", "MAE_true", "MSE_pred", "MSE_true", "RMSE_pred", "RMSE_true"],
+            tablefmt="grid",
+        ),
+    )
+    logger.info("")
 
     # Fichiers
-    print("=== Fichiers associés ===")
-    print(f"Résumé : {results.get('summary_path')}")
-    print(f"Détails fit : {results.get('fit_details_path')}")
-    print(f"Détails reconstruction : {results.get('reconstruction_details_path')}")
-    print(f"YAML : {results.get('yaml_path')}")
-    print()
-    print(f"Reconstruction status : {results.get('reconstruction_status')}")
-    print(f"Random state : {results.get('random_state')}")
+    logger.info("=== Fichiers associés ===")
+    logger.info("Résumé : %s", results.get('summary_path'))
+    logger.info("Détails fit : %s", results.get('fit_details_path'))
+    logger.info(
+        "Détails reconstruction : %s",
+        results.get('reconstruction_details_path'),
+    )
+    logger.info("YAML : %s", results.get('yaml_path'))
+    logger.info("")
+    logger.info("Reconstruction status : %s", results.get('reconstruction_status'))
+    logger.info("Random state : %s", results.get('random_state'))

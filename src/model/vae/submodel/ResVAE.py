@@ -1,6 +1,10 @@
 import torch
 from torch import nn
 
+from src.logging_utils import get_logger
+
+logger = get_logger(__name__)
+
 
 class ResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels):
@@ -55,7 +59,6 @@ class ResidualUpBlock(nn.Module):
         out = self.GELU(out)
         out = self.deconv2(out)
         out += identity
-        out = self.GELU(out)
         return out
 
 
@@ -129,6 +132,10 @@ class ResVAE(nn.Module):
 
         self.decoder = nn.Sequential(*layers)
 
+    def display_info(self):
+        logger.info("RESEAU VAE")
+
+    # ---- ENCODER ----
     def encode(self, x):
         x = self.encoder(x)
         mu = self.fc_mu(x)
