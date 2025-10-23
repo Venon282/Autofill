@@ -18,6 +18,7 @@ transforms_data:
 training:
   array_train_indices: DATA/train_pairs_saxs_les.npy
   array_val_indices: DATA/val_pairs_saxs_les.npy
+  array_test_indices:
   weighted_loss : False
   weighted_loss_limit_index: 
   T_max: 100

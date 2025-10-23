@@ -55,7 +55,7 @@ class TrainPipeline:
         self.config['conversion_dict'] = self.dataset.get_conversion_dict()
         if self.verbose:
             logger.info("Preparing data loaders")
-        self.training_loader, self.validation_loader = self._create_data_loaders()
+        self.training_loader, self.validation_loader, self.test_dataloader = self._create_data_loaders()
         if self.verbose:
             logger.info("Building trainer")
         self.trainer = self._configure_trainer()
@@ -179,25 +179,36 @@ class TrainPipeline:
         return model, dataset, callbacks
 
     def _create_data_loaders(self):
-        """Construct train and validation data loaders from saved CSV indices."""
+        """Construct train / validation and test data loaders from saved CSV indices."""
         if self.config['training']['array_train_indices'] is not None and self.config['training']['array_val_indices'] is not None:
             train_csv_indices_saxs_les = np.load(self.config['training']['array_train_indices'], allow_pickle=True)
             val_csv_indices_saxs_les = np.load(self.config['training']['array_val_indices'], allow_pickle=True)
+            if self.config['training']['array_test_indices'] is not None :
+                test_csv_indices_saxs_les = np.load(self.config['training']['array_test_indices'], allow_pickle=True)
 
             if self.config['model']['type'].lower() == 'vae':
                 if  "saxs" in self.config['run_name']:
                     train_csv_indices = [pair[1] for pair in train_csv_indices_saxs_les]
                     val_csv_indices = [pair[1] for pair in val_csv_indices_saxs_les]
+                    if self.config['training']['array_test_indices'] is not None :
+                        test_csv_indices = [pair[1] for pair in test_csv_indices_saxs_les]
+
                 elif "les" in self.config['run_name'] :
                     train_csv_indices = [pair[2] for pair in train_csv_indices_saxs_les]
                     val_csv_indices = [pair[2] for pair in val_csv_indices_saxs_les]
-            
+                    if self.config['training']['array_test_indices'] is not None :
+                        test_csv_indices = [pair[2] for pair in test_csv_indices_saxs_les]
+
             elif self.config['model']['type'].lower() == 'pair_vae':
                 train_csv_indices = [pair[0] for pair in train_csv_indices_saxs_les]
                 val_csv_indices = [pair[0] for pair in val_csv_indices_saxs_les]
+                if self.config['training']['array_test_indices'] is not None :
+                    test_csv_indices = [pair[0] for pair in test_csv_indices_saxs_les]
 
             train_dataset = build_subset(self.dataset, train_csv_indices)
             validation_subset   = build_subset(self.dataset, val_csv_indices)
+            if self.config['training']['array_test_indices'] is not None :
+                test_subset   = build_subset(self.dataset, test_csv_indices)
 
         else:
             total_samples = len(self.dataset)
@@ -221,7 +232,11 @@ class TrainPipeline:
             )
         training_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
         validation_loader = DataLoader(validation_subset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
-        return training_loader, validation_loader
+        test_dataloader = None
+        if self.config['training']['array_test_indices'] is not None :
+            test_dataloader = DataLoader(test_subset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+
+        return training_loader, validation_loader, test_dataloader
 
     def _configure_trainer(self):
         """Configure callbacks, logging, and return a Lightning trainer."""
@@ -307,6 +322,10 @@ class TrainPipeline:
             val_dataloaders=self.validation_loader
         )
         logger.info("Training completed")
+        if self.test_dataloader is not None :
+            logger.info("Starting testing")
+            self.trainer.test(self.model, self.test_dataloader, ckpt_path="best")
+            logger.info("Testing completed")
         return self.log_path
 
 

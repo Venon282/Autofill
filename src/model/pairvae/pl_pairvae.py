@@ -97,6 +97,12 @@ class PlPairVAE(pl.LightningModule):
         self.log('val_loss', loss_total, on_step=True, on_epoch=True, prog_bar=True)
         self._log_details('val', details)
 
+    def test_step(self, batch, batch_idx):
+        outputs = self(batch)
+        loss_total, details = self.compute_loss(batch, outputs)
+        self.log('test_loss', loss_total, on_step=True, on_epoch=True, prog_bar=True)
+        self._log_details('test', details)
+
     def _log_details(self, stage: str, details):
         for key, value in details.items():
             self.log(f'{stage}_loss_{key}', value, on_step=True, on_epoch=True, prog_bar=False, sync_dist=True)

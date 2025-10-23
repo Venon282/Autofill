@@ -147,7 +147,7 @@ Step 1 – Pairing HDF5 Converter (create paired dataset + shared splits)
 If you want to use the same datasets for training both the VAE and the PairVAE, use PairingHDF5Converter.
 This converter creates data splits (training/validation) before training the VAEs. These same splits are then reused for training the PairVAE, ensuring that training and validation subsets never overlap.
 The splits are save as ``.npy`` files that you need to inform in the ``.yaml`` training files as `array_train_indices` and `array_val_indices` for BOTH VAE training and PairVAE training to ensure that the rights splits are always used.
-
+There 
 **Command**
 
 .. code-block:: bash
@@ -165,6 +165,7 @@ The splits are save as ``.npy`` files that you need to inform in the ``.yaml`` t
 * ``--dir_output`` – directory with the npy and HDF5 files are stored.
 * ``--output_hdf5_filename`` – name of HDF5 file.
 * ``--split_train_ratio`` – split ratio >0 and <1..
+* ``--split_test_ratio`` – split ratio >0 and <1..
 
 **Outputs**
 

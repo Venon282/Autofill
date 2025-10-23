@@ -81,6 +81,15 @@ class PlVAE(pl.LightningModule):
         self.log('val_recon_loss', recon_loss, on_step=True, on_epoch=True, prog_bar=False)
         self.log('val_kl_loss', kl_loss, on_step=True, on_epoch=True, prog_bar=False)
 
+    def test_step(self, batch, batch_idx):
+        """Compute test metrics."""
+
+        output = self.model(x=batch["data_y"], metadata=batch["metadata"])
+        loss, recon_loss, kl_loss = self.compute_loss(batch, output)
+        self.log('test_loss', loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log('test_recon_loss', recon_loss, on_step=True, on_epoch=True, prog_bar=False)
+        self.log('test_kl_loss', kl_loss, on_step=True, on_epoch=True, prog_bar=False)
+
     def configure_optimizers(self):
         """Use AdamW with a ReduceLROnPlateau scheduler on validation loss."""
 
