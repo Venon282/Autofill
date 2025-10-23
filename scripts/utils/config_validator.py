@@ -15,7 +15,7 @@ from src.logging_utils import get_logger
 
 
 logger = get_logger(__name__)
-
+DEFAULT_GPUS=0
 
 def validate_config_and_files(config: dict[str, Any], args: argparse.Namespace) -> bool:
     """Validate configuration and check file paths for dry-run mode.
@@ -86,7 +86,7 @@ def validate_config_and_files(config: dict[str, Any], args: argparse.Namespace) 
     # Validate training configuration
     if "training" in config:
         training_keys = ["num_epochs", "batch_size", "num_gpus", "output_dir", 'patience',
-                         'output_dir', 'every_n_epochs', 'num_samples']
+                         'output_dir']
         training_config = config["training"]
 
         # Check training indices

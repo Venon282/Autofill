@@ -243,7 +243,7 @@ class PairingHDF5Converter:
     with corresponding training and validation splits.
     """
 
-    def __init__(self, saxs_hdf5_path, les_hdf5_path, output_dir, output_filename, split_train_ratio=0.8, split_test_ratio=0.0):
+    def __init__(self, saxs_hdf5_path, les_hdf5_path, output_dir, output_filename, split_val_ratio=0.15, split_test_ratio=0.05):
         """
         Initialize converter with input HDF5 paths and output settings.
 
@@ -252,7 +252,7 @@ class PairingHDF5Converter:
             les_hdf5_path (str): Path to the LES HDF5 file.
             output_dir (str): Output directory where results will be saved.
             output_filename (str): Name of the output combined HDF5 file.
-            split_train_ratio (float): Ratio of pairs to include in the training set.
+            split_val_ratio (float): Ratio of pairs to include in the validation set.
             split_test_ratio (float): Ratio of pairs to include in the test set.
         """
         self.hdf_saxs = h5py.File(saxs_hdf5_path, "r", swmr=True)
@@ -260,8 +260,15 @@ class PairingHDF5Converter:
 
         self.output_dir = output_dir
         self.output_filename = output_filename
-        self.split_train_ratio = split_train_ratio
+        self.split_val_ratio = split_val_ratio
         self.split_test_ratio = split_test_ratio
+
+        if split_val_ratio + split_test_ratio >= 1.0:
+            raise ValueError("Sum of validation and test split ratios must be less than 1.0")
+        if split_val_ratio < 0.0 or split_test_ratio < 0.0:
+            raise ValueError("Split ratios must be non-negative")
+        if split_test_ratio + split_val_ratio >= 0.5:
+            logger.warning("High combined split ratio may lead to small training set.")
 
     def _get_concentration(self, hdf_obj):
         """
@@ -350,9 +357,9 @@ class PairingHDF5Converter:
             )
 
         random.shuffle(pairs)
-        n_train = int(self.split_train_ratio * len(pairs))
+        n_val = int(self.split_val_ratio * len(pairs))
         n_test = int(self.split_test_ratio * len(pairs))
-        n_val = len(pairs) - n_train - n_test
+        n_train = len(pairs) - n_val - n_test
 
         train_pairs = pairs[:n_train]
         val_pairs = pairs[n_train:n_train + n_val]
@@ -427,8 +434,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--saxs_hdf5_path", type=str, default="data_saxs.h5", help="HDF5 SAXS path.")
     parser.add_argument("--les_hdf5_path", type=str, default="data_les.h5", help="HDF5 LES path.")
     parser.add_argument("--dir_output", type=str, default="output_pairvae_dataset/", help="Destination for HDF5 and splits.")
-    parser.add_argument("--split_train_ratio", type=float, default=0.8, help="Split ratio for training subset.")
-    parser.add_argument("--split_test_ratio", type=float, default=0.0, help="Split ratio for test subset.")
+    parser.add_argument("--split_val_ratio", type=float, default=0.15, help="Split ratio for validation subset.")
+    parser.add_argument("--split_test_ratio", type=float, default=0.05, help="Split ratio for test subset.")
 
     parser.add_argument("--output_hdf5_filename", type=str, default="data.h5", help="Destination HDF5 filename.")
     return parser
@@ -466,7 +473,7 @@ def main() -> None:
             les_hdf5_path=args.les_hdf5_path,
             output_dir=args.dir_output,
             output_filename=args.output_hdf5_filename,
-            split_train_ratio=args.split_train_ratio,
+            split_val_ratio=args.split_val_ratio,
             split_test_ratio=args.split_test_ratio,
         )
     converter.convert()

@@ -236,6 +236,9 @@ Basic training parameters
      array_train_indices: "data/train_indices.npy"
      array_val_indices: "data/val_indices.npy"
 
+     # Optional
+     array_test_indices: "data/val_indices.npy"
+
      # Optional with defaults
      batch_size: 32
      num_workers: 4
@@ -262,6 +265,9 @@ Basic training parameters
 ``array_train_indices``, ``array_val_indices`` (string, required)
     Paths to NumPy files containing train/validation split indices. 
     If None, the HDF5 file will be split 80%/20%. Using data already used in training VAE to train PairVAE may therefore lead to Data Leak.
+
+``array_test_indices`` (string, optional)
+    Path to NumPy file containing test split indices. If None, no test set is used.
 
 ``batch_size`` (int, default: 32)
     Training batch size.
@@ -349,6 +355,10 @@ MLFlow logging
    mlflow_uri: "http://localhost:5000"
    experiment_name: "saxs_experiments"
    run_name: "baseline_run"
+
+.. note::
+    To use MLFlow for experiment tracking, provide the ``mlflow_uri`` parameter with the address of your MLFlow server.
+    Check MlFlow docs for setup instructions: https://mlflow.org/docs/3.1.3/ml/tracking/server/
 
 When ``mlflow_uri`` is provided, AutoFill will:
 
@@ -510,10 +520,13 @@ Tips
 
    .. code-block:: bash
 
-      # Check data integrity
-      python script/saminitycheck.py data/metadata.csv
+      # Check data integrity using the project utility
+      python scripts/utils/H5_check.py /path/to/your/data.h5
 
       # Dry run to check configuration
-      python script/03_train.py --config config/my_config.yaml --dry-run
+      python scripts/03_train.py --config config/my_config.yaml --dry-run
+
+   You can also run a very small quick training of a single-modality VAE to verify end-to-end that datasets, transforms and logging work. Create a small config with ``model.type: "vae"``, reduce ``num_epochs`` (e.g. 2-5) and ``batch_size`` (e.g. 4-8) and run with ``--dry-run`` or on a single GPU.
+
 
 .. [1] Lu, S., & Jayaraman, A. (2023). Pair-Variational Autoencoders for Linking and Cross-Reconstruction of Characterization Data from Complementary Structural Characterization Techniques. *JACS Au*, 3(9), 2510-2521. DOI: 10.1021/jacsau.3c00275

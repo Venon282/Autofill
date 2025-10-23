@@ -33,7 +33,7 @@ logger = get_logger(__name__)
 class TrainPipeline:
     """High-level orchestration class that instantiates data, model, and trainer."""
 
-    def __init__(self, config: dict, verbose=True):
+    def __init__(self, config: dict, verbose=False):
         """Validate configuration, prepare datasets, and instantiate the trainer."""
         self.verbose = verbose
         self.config = self._set_defaults(config)
@@ -242,7 +242,7 @@ class TrainPipeline:
         if self.verbose:
             logger.info("Configuring callbacks and logger")
         early_stop_callback = EarlyStopping(monitor='val_loss', patience=self.config['training']['patience'],
-                                            min_delta=self.config['training'].get('min_delta', 0.00001), verbose=True,
+                                            min_delta=self.config['training'].get('min_delta', 0.00001), verbose=self.verbose,
                                             mode='min')
         checkpoint_callback = ModelCheckpoint(monitor='val_loss', save_top_k=1, mode='min',
                                               every_n_epochs=self.config['training'].get('save_every', 1),

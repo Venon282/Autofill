@@ -155,7 +155,7 @@ There
    python scripts/04_prepare_pairdataset.py \
      --saxs_hdf5_path DATA/cylinder_saxs_library_no_noise_meta_diameter_metric.h5 \
      --les_hdf5_path DATA/cylinder_les_meta.h5 \
-     --dir_output pairvae_dataset \
+     --dir_output DATA \
      --output_hdf5_filename pair_all_data.hdf5
 
 **Arguments**
@@ -164,8 +164,8 @@ There
 * ``--les_hdf5_path`` – HDF5 LES path.
 * ``--dir_output`` – directory with the npy and HDF5 files are stored.
 * ``--output_hdf5_filename`` – name of HDF5 file.
-* ``--split_train_ratio`` – split ratio >0 and <1..
-* ``--split_test_ratio`` – split ratio >0 and <1..
+* ``--split_val_ratio`` – split ratio >0 and <1.. => default 0.15.
+* ``--split_test_ratio`` – split ratio >0 and <1.. => default 0.05.
 
 **Outputs**
 
@@ -281,6 +281,7 @@ The training script accepts several command-line arguments that can override con
 * ``--material`` – **Optional**: Filter the dataset to a specific material label.
 * ``--gridsearch`` – **Optional**: Run hyperparameter search instead of single training.
 * ``--dry-run`` – **Optional**: Validate configuration and check file paths without starting training.
+* ``--verbose`` – **Optional**: Enable detailed logging output for debugging.
 
 **Examples**
 

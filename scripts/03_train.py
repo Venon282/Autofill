@@ -50,6 +50,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--technique", type=str, default=None, help="Filter the dataset to a given acquisition technique.")
     parser.add_argument("--material", type=str, default=None, help="Filter the dataset to a given material label.")
     parser.add_argument("--dry-run", action="store_true", default=False, help="Validate configuration and check file paths without starting training.")
+    parser.add_argument("--verbose", action="store_true", default=False, help="Enable verbose logging output.")
     return parser.parse_args()
 
 
@@ -76,12 +77,16 @@ def main() -> None:
         config["run_name"] = args.name
     if args.hdf5_file:
         config.setdefault("dataset", {})["hdf5_file"] = args.hdf5_file
+        logger.warning("Overriding HDF5 file path to: %s", args.hdf5_file)
     if args.conversion_dict_path:
         config.setdefault("dataset", {})["conversion_dict_path"] = args.conversion_dict_path
+        logger.warning("Overriding conversion dictionary path to: %s", args.conversion_dict_path)
     if args.technique:
         config.setdefault("dataset", {})["technique"] = args.technique
+        logger.warning("Filtering dataset to technique: %s", args.technique)
     if args.material:
         config.setdefault("dataset", {})["material"] = args.material
+        logger.warning("Filtering dataset to material: %s", args.material)
 
     if not args.mode and "model" in config and "type" in config["model"]:
         args.mode = config["model"]["type"]
@@ -101,7 +106,7 @@ def main() -> None:
                 grid_search.run()
             else:
                 logger.info("Starting training...")
-                trainer = TrainPipeline(config)
+                trainer = TrainPipeline(config, verbose=args.verbose)
                 trainer.train()
         except KeyboardInterrupt:
             logger.warning("Training interrupted by user")

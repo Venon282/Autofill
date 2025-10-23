@@ -10,7 +10,7 @@ dataset:
   sample_frac: 1.0
 
 training:
-  output_dir: "DATA/pair_vae/runs/"
+  output_dir: "runs/"
   num_gpus: 1
   num_epochs: 1
   warmup_epochs: 5
@@ -36,7 +36,7 @@ training:
   eta_min: 1.0e-15
   array_train_indices: DATA/train_pairs_saxs_les.npy
   array_val_indices: DATA/val_pairs_saxs_les.npy
-  array_test_indices:
+  array_test_indices: DATA/test_pairs_saxs_les.npy
 
 model:
   type: pair_vae
