@@ -144,44 +144,51 @@ The pairing file should be a panda dataframe with columns `saxs_path` and `les_p
 Step 1 – Pairing HDF5 Converter (create paired dataset + shared splits)
 -----------------------------------------------------------------------
 
-If you want to use the same datasets for training both the VAE and the
-PairVAE, use the Pairing HDF5 Converter (the script provided in this
-repository is `scripts/04_prepare_pairdataset.py`). This converter can take
-paired TXT paths (or paired HDF5 inputs) and produce a single paired HDF5
-file plus reproducible training/validation splits.
+If you want to use the same datasets for training both the VAE and the PairVAE, use PairingHDF5Converter.
+This converter creates data splits (training/validation) before training the VAEs. These same splits are then reused for training the PairVAE, ensuring that training and validation subsets never overlap.
+The splits are save as ``.npy`` files that you need to inform in the ``.yaml`` training files as `array_train_indices` and `array_val_indices` for BOTH VAE training and PairVAE training to ensure that the rights splits are always used.
 
-Why this matters
-~~~~~~~~~~~~~~~~~
-
-Creating and reusing the exact same training and validation splits for both
-VAE and PairVAE training prevents any overlap between the subsets and ensures
-that downstream cross-modal evaluations are fair and comparable.
-
-What the converter produces
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-* A paired HDF5 file (for example ``data/pair_all_data.h5``) that contains
-  both modalities in the same dataset.
-* A metadata JSON (for example ``data/pair_metadata_dict.json``) that maps
-  categorical labels.
-* Two ``.npy`` files containing the indices of the training and validation
-  subsets (commonly named ``train_indices.npy`` and ``val_indices.npy``).
-
-How to run
-~~~~~~~~~~
+**Command**
 
 .. code-block:: bash
 
    python scripts/04_prepare_pairdataset.py \
-     --data_csv_path data/metadata_clean.csv \
-     --data_dir data/txt/ \
-     --output_hdf5_filename data/pair_all_data.h5 \
-     --json_output data/pair_metadata_dict.json \
-     --pad_size 900
+     --saxs_hdf5_path DATA/cylinder_saxs_library_no_noise_meta_diameter_metric.h5 \
+     --les_hdf5_path DATA/cylinder_les_meta.h5 \
+     --dir_output pairvae_dataset \
+     --output_hdf5_filename pair_all_data.hdf5
 
-(Depending on the script flags, the converter will write the split arrays to
-the same output folder as the HDF5 or to a configured output directory. Check
-the script's --help output to confirm exact flag names.)
+**Arguments**
+
+* ``--saxs_hdf5_path`` – HDF5 SAXS path.
+* ``--les_hdf5_path`` – HDF5 LES path.
+* ``--dir_output`` – directory with the npy and HDF5 files are stored.
+* ``--output_hdf5_filename`` – name of HDF5 file.
+* ``--split_train_ratio`` – split ratio >0 and <1..
+
+**Outputs**
+
+* ``data/pair_all_data.h5`` – HDF5 dataset containing paired arrays and helper
+  metadata (written to the directory specified by ``--dir_output``).
+* ``train_pairs_saxs_les.npy`` – array containing triplets (pair_idx, saxs_idx, les_idx). Saved in ``--dir_output``. Note: saved with dtype=object; load with ``np.load(..., allow_pickle=True)``.
+* ``val_pairs_saxs_les.npy`` – array containing triplets (pair_idx, saxs_idx, les_idx). Saved in ``--dir_output``. Note: saved with dtype=object; load with ``np.load(..., allow_pickle=True)``.
+
+**Required HDF5 keys created/expected**
+
+The combined HDF5 file created by the converter (and required by `PairHDF5Dataset`) must contain the following datasets:
+
+* ``data_q_saxs``
+* ``data_y_saxs``
+* ``data_q_les``
+* ``data_y_les``
+* ``csv_index``
+
+(Optionally the converter also writes ``csv_index_saxs`` and ``csv_index_les``.)
+
+.. tip::
+   * When combining modalities, keep a consistent folder structure so both files in
+     a pair can be found relative to ``--data_dir``.
+   * Use a pad size that accommodates the longest modality to avoid truncation.
 
 Using the splits in your YAML configuration
 -------------------------------------------
@@ -195,8 +202,8 @@ precomputed index arrays. For example:
 
    dataset:
      h5_file_path: "data/pair_all_data.h5"
-     array_train_indices: "data/train_indices.npy"
-     array_val_indices: "data/val_indices.npy"
+     array_train_indices: "data/train_pairs_saxs_les.npy"
+     array_val_indices: "data/val_pairs_saxs_les.npy"
 
 .. important::
     Supply the same ``array_train_indices`` and ``array_val_indices``

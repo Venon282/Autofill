@@ -30,6 +30,7 @@ class PlPairVAE(pl.LightningModule):
         self.weight_les2les = training_cfg["weight_les2les"]
         self.weight_les2saxs = training_cfg["weight_les2saxs"]
         self._setup_data_q_config(force_dataset_q)
+        self.save_hyperparameters()
 
     def _setup_data_q_config(self, force_dataset_q=False):
         """Configure data_q settings with warnings about source."""

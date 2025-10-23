@@ -33,6 +33,7 @@ class PlVAE(pl.LightningModule):
                 logger.info("Forcing use of data_q from dataloader (ignoring configuration value)")
             else:
                 logger.warning("Using data_q provided by the dataloader")
+        self.save_hyperparameters()
 
     def forward(self, batch):
         """Forward pass delegating to the configured sub-model."""

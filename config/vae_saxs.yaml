@@ -25,7 +25,7 @@ training:
   beta: 1.0e-06
   eta_min: 1.0e-10
   max_lr: 1.0e-04
-  num_epochs: 1
+  num_epochs: 300
   num_gpus: 1
   num_nodes: 1
   patience: 40
@@ -35,13 +35,17 @@ training:
   save_every: 1
 
 model:
+  vae_class: ResVAEBN
   type: vae
-  vae_class: ResVAE
-  latent_dim: 64
   args:
     in_channels: 1
     output_channels: 1
+    dilation: 1
     input_dim: 1000
+    latent_dim: 64
+    down_channels: [8, 16, 32, 64, 128, 256, 512]
+    up_channels: [ 512, 256, 128, 64, 32, 16, 8]
+
 
 param_grid:
   model.args.latent_dim: [ 128, 64 ]    
