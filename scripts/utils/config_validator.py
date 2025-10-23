@@ -85,6 +85,8 @@ def validate_config_and_files(config: dict[str, Any], args: argparse.Namespace) 
 
     # Validate training configuration
     if "training" in config:
+        training_keys = ["num_epochs", "batch_size", "num_gpus", "output_dir", 'patience',
+                         'output_dir', 'every_n_epochs', 'num_samples']
         training_config = config["training"]
 
         # Check training indices
@@ -105,18 +107,15 @@ def validate_config_and_files(config: dict[str, Any], args: argparse.Namespace) 
         else:
             logger.info("Validation indices found: %s", val_indices)
 
-        # Check training parameters
-        num_epochs = training_config.get("num_epochs", 100)
-        batch_size = training_config.get("batch_size", 32)
-        num_gpus = training_config.get("num_gpus", 1)
-
-        logger.info("Training epochs: %s", num_epochs)
-        logger.info("Batch size: %s", batch_size)
-        logger.info("Number of GPUs: %s", num_gpus)
-
-        # Check GPU availability if requested
+        num_gpus = training_config.get("num_gpus", DEFAULT_GPUS)
+        for key in training_keys:
+            if key not in training_config:
+                raise ValueError(f"Missing required training config key: {key}")
         try:
             import torch
+        except ImportError:
+            warnings.append("PyTorch not available - cannot check GPU status")
+        else:
             if num_gpus > 0:
                 if not torch.cuda.is_available():
                     warnings.append("CUDA not available but num_gpus > 0")
@@ -124,8 +123,6 @@ def validate_config_and_files(config: dict[str, Any], args: argparse.Namespace) 
                     warnings.append(f"Requested {num_gpus} GPUs but only {torch.cuda.device_count()} available")
                 else:
                     logger.info("CUDA available with %d GPU(s)", torch.cuda.device_count())
-        except ImportError:
-            warnings.append("PyTorch not available - cannot check GPU status")
 
     # Check conversion dictionary if provided
     conv_dict_path = getattr(args, 'conversion_dict_path', None)
@@ -197,6 +194,10 @@ def check_gpu_availability(num_gpus: int) -> list[str]:
 
     try:
         import torch
+    except ImportError:
+        torch = None
+        warnings.append("PyTorch not available - cannot check GPU status")
+    else:
         if num_gpus > 0:
             if not torch.cuda.is_available():
                 warnings.append("CUDA not available but num_gpus > 0")
@@ -204,7 +205,5 @@ def check_gpu_availability(num_gpus: int) -> list[str]:
                 warnings.append(f"Requested {num_gpus} GPUs but only {torch.cuda.device_count()} available")
             else:
                 logger.info("CUDA available with %d GPU(s)", torch.cuda.device_count())
-    except ImportError:
-        warnings.append("PyTorch not available - cannot check GPU status")
 
     return warnings

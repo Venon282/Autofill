@@ -77,7 +77,6 @@ class TrainPipeline:
 
         training.setdefault('patience', max(1, training['num_epochs'] // 5))
         training.setdefault('batch_size', 32)
-        training.setdefault('num_workers', 4)
         training.setdefault('use_loglog', True)
         training.setdefault('num_gpus', 1)
         training.setdefault('num_nodes', 1)
