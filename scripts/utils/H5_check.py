@@ -213,7 +213,7 @@ def diagnose_hdf5(path: Path, file_type: str, extra_cols: Iterable[str], verbose
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Check integrity of SAXS/LES HDF5 files")
-    p.add_argument("--hdf5_path", type=str, required=True, help="Path to the HDF5 file to check")
+    p.add_argument(dest="hdf5_path", type=str, help="Path to the HDF5 file to check")
     p.add_argument("--type", type=str, choices=["saxs", "les", "auto"], default="auto", help="Type of file to check (saxs/les/auto)")
     p.add_argument("--required-columns", type=str, nargs="*", default=[], help="Extra dataset names that must exist in the file")
     p.add_argument("--verbose", action="store_true", help="Print more info")

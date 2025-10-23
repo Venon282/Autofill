@@ -69,7 +69,7 @@ Cela crée automatiquement un environnement virtuel `.venv` et installe les dép
 
 ---
 
-### 5. (Optionnel) Utiliser `venv` manuellement
+### 5. (Optionnel) Utiliser `venv` manuellement (que pour Linux)
 
 Si vous préférez une installation classique :
 
@@ -99,7 +99,7 @@ uv sync --extra docs
 Équivalent à :
 
 ```bash
-pip install -e ".[docs]"
+pip install -e ".[docs]"  # Que pour Linux
 ```
 
 ### 2. Activer l’environnement
@@ -107,6 +107,11 @@ pip install -e ".[docs]"
 ```bash
 source .venv/bin/activate
 ```
+ou sur PowerShell
+```bash
+./.venv/bin/activate
+```
+
 
 ### 3. Générer la documentation
 
