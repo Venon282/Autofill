@@ -57,12 +57,9 @@ def main() -> None:
     """Load configuration overrides and launch training or grid search."""
 
     args = parse_args()
-
-    # Load configuration file
     if not os.path.exists(args.config):
         logger.error("Configuration file not found: %s", args.config)
         sys.exit(1)
-
     try:
         with open(args.config, "r") as f:
             config = yaml.safe_load(f)
@@ -75,7 +72,6 @@ def main() -> None:
 
     config["model"]["spec"] = args.spec
 
-    # Apply command-line overrides
     if args.name:
         config["run_name"] = args.name
     if args.hdf5_file:

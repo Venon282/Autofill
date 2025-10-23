@@ -1,18 +1,18 @@
-experiment_name: PAIR_VAE_CARO
-run_name: pairvae_loss_caro
+experiment_name: PAIR_VAE
+run_name: pairvae
 
 mlflow_uri: 
 dataset:
   conversion_dict: 
-  hdf5_file: "/projects/pnria/DATA/AUTOFILL/pair_data.h5"
+  hdf5_file: "DATA/pair_all_data.hdf5"
   metadata_filters:
   requested_metadata: 
   sample_frac: 1.0
 
 training:
-  output_dir: "/projects/pnria/caroline/AUTOFILL/pair_vae/runs/"
+  output_dir: "DATA/pair_vae/runs/"
   num_gpus: 1
-  num_epochs: 250
+  num_epochs: 1
   warmup_epochs: 5
   patience: 20
   use_loglog: false
@@ -34,20 +34,15 @@ training:
 
   T_max: 25
   eta_min: 1.0e-15
-  array_train_indices: /projects/pnria/DATA/AUTOFILL/train_(pair_saxs_les).npy
-  array_val_indices: /projects/pnria/DATA/AUTOFILL/val_(pair_saxs_les).npy
+  array_train_indices: DATA/train_pairs_saxs_les.npy
+  array_val_indices: DATA/val_pairs_saxs_les.npy
 
 model:
+  type: pair_vae
   VAE_LES:
-    vae_class: ResVAEBN 
-    path_checkpoint: /projects/pnria/julien/autofill/runs/les_cylinder_ag_grid_2_latent_dim=128_beta=1e-05/best.ckpt
-    args:
-
-
+    path_checkpoint: train_results/AUTOFILL_LES/les_cylinder_ag/best.ckpt
   VAE_SAXS:
-    vae_class: ResVAEBN 
-    path_checkpoint: /projects/pnria/julien/autofill/runs/saxs_cylinder_ag_grid_3_latent_dim=128_beta=1e-06/best.ckpt
-    args:
+    path_checkpoint: train_results/AUTOFILL_SAXS/saxs_cylinder_ag/best.ckpt
 
 param_grid:
   training.weight_latent_similarity: [0.005, 0.001]

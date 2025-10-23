@@ -426,7 +426,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("--saxs_hdf5_path", type=str, default="data_saxs.h5", help="HDF5 SAXS path.")
     parser.add_argument("--les_hdf5_path", type=str, default="data_les.h5", help="HDF5 LES path.")
-    parser.add_argument("--dir_output", type=str, default="output_pairvar_dataset/", help="Destination for HDF5 and splits.")
+    parser.add_argument("--dir_output", type=str, default="output_pairvae_dataset/", help="Destination for HDF5 and splits.")
     parser.add_argument("--split_train_ratio", type=float, default=0.8, help="Split ratio for training subset.")
     parser.add_argument("--split_test_ratio", type=float, default=0.0, help="Split ratio for test subset.")
 
@@ -439,6 +439,13 @@ def main() -> None:
 
     parser = build_parser()
     args = parser.parse_args()
+
+    # Determine and log where outputs will be written for user clarity
+    if args.data_csv_path is not None :
+        out_dir = os.path.dirname(args.output_hdf5_filename) or "."
+    else:
+        out_dir = args.dir_output
+    logger.info("Pair dataset conversion: outputs will be written to '%s'", out_dir)
 
     if args.data_csv_path is not None :
         csv_path = Path(args.data_csv_path)

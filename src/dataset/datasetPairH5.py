@@ -103,30 +103,12 @@ class PairHDF5Dataset(Dataset):
         if 0 < sample_frac < 1:
             self._apply_data_fraction(sample_frac)
 
-        self._print_init_info()
-
         self.transformer_y_saxs.fit(self.data_y_saxs[self.filtered_indices])
         self.transformer_y_les.fit(self.data_y_les[self.filtered_indices])
         if self.use_data_q and self.data_q_saxs is not None and self.data_q_les is not None:
             self.transformer_q_saxs.fit(self.data_q_saxs)
             self.transformer_q_les.fit(self.data_q_les)
 
-    def _print_init_info(self):
-        """Print dataset initialization information"""
-        info_lines = [
-            "",
-            "╒══════════════════════════════════════════════╕",
-            "│ Dataset Initialization Info                 │",
-            "╞══════════════════════════════════════════════╡",
-            f"│ File: {self.hdf5_file:<35} │",
-            f"│ Total samples: {len(self.data_y_saxs):<26} │",
-            f"│ Samples filtered: {len(self.filtered_indices):<23} │",
-            f"│ Requested fraction: {self.sample_frac:<22} │",
-            f"│ Fractioned samples: {len(self.filtered_indices):<22} │",
-            f"│ Requested metadata: {len(self.requested_metadata):<22} │",
-        ]
-        for line in info_lines:
-            logger.info(line)
 
     def _validate_requested_metadata(self, requested, available):
         """Validate and filter requested metadata columns"""

@@ -151,10 +151,9 @@ def validate_config_and_files(config: dict[str, Any], args: argparse.Namespace) 
 
     # Report errors
     if errors:
-        logger.error("Configuration errors found:")
+        logger.error(f"Configuration {len(errors)} errors found:")
         for error in errors:
             logger.error(" - %s", error)
-        logger.error("Please fix these errors before training.")
         return False
     else:
         logger.info("Configuration validation passed!")

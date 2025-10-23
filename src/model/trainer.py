@@ -120,8 +120,6 @@ class TrainPipeline:
             model = PlPairVAE(self.config)
             transform_les = model.get_transforms_data_les()
             transform_saxs = model.get_transforms_data_saxs()
-            logger.info("Config: %s", self.config)
-            logger.info("#" * 50)
             dataset = PairHDF5Dataset(**self.config['dataset'],
                                       transformer_q_saxs=Pipeline(transform_saxs["q"]),
                                       transformer_y_saxs=Pipeline(transform_saxs["y"]),
