@@ -36,6 +36,7 @@ class TrainPipeline:
     def __init__(self, config: dict, verbose=False):
         """Validate configuration, prepare datasets, and instantiate the trainer."""
         self.verbose = verbose
+        self.cfg_model = config.get('model')
         self.config = self._set_defaults(config)
         if self.verbose:
             logger.info("Loading configuration")
@@ -108,7 +109,7 @@ class TrainPipeline:
 
         This function modifies self.config in place to add data transformations and q values for save in hyperparameters.
         """
-        model_type = self.config['model']['type']
+        model_type = self.cfg_model['type']
         common_cfg = {
             'num_samples': self.config['training'].get('num_samples', 10),
             'every_n_epochs': self.config['training'].get('every_n_epochs', 10),
@@ -125,8 +126,8 @@ class TrainPipeline:
                                       transformer_q_les=Pipeline(transform_les["q"]),
                                       transformer_y_les=Pipeline(transform_les["y"]))
             # Save the data_q used for training in the config for hyperparameter logging
-            self.config['model']['data_q_saxs'] = dataset.get_data_q_saxs()
-            self.config['model']['data_q_les'] = dataset.get_data_q_les()
+            self.cfg_model['data_q_saxs'] = dataset.get_data_q_saxs()
+            self.cfg_model['data_q_les'] = dataset.get_data_q_les()
 
             curves_config = {
                 'saxs': {'truth_key': 'data_y_saxs', 'pred_keys': ['recon_saxs', 'recon_les2saxs'], 'use_loglog': True},
@@ -147,7 +148,7 @@ class TrainPipeline:
                                   transformer_q=Pipeline(transform_config["q"]),
                                   transformer_y=Pipeline(transform_config["y"]))
             # Save the data_q used for training in the config for hyperparameter logging
-            self.config['model']['data_q'] = dataset.get_data_q()
+            self.cfg_model['data_q'] = dataset.get_data_q()
 
             curves_config = {'recon': {'truth_key': 'data_y', 'pred_keys': ["recon"],
                                        'use_loglog': self.config['training']['use_loglog']}}
@@ -178,64 +179,86 @@ class TrainPipeline:
         return model, dataset, callbacks
 
     def _create_data_loaders(self):
-        """Construct train / validation and test data loaders from saved CSV indices."""
-        if self.config['training']['array_train_indices'] is not None and self.config['training']['array_val_indices'] is not None:
-            train_csv_indices_saxs_les = np.load(self.config['training']['array_train_indices'], allow_pickle=True)
-            val_csv_indices_saxs_les = np.load(self.config['training']['array_val_indices'], allow_pickle=True)
-            if self.config['training']['array_test_indices'] is not None :
-                test_csv_indices_saxs_les = np.load(self.config['training']['array_test_indices'], allow_pickle=True)
+        """Create train/validation/test DataLoaders depending on provided index arrays."""
+        cfg_train = self.config['training']
 
-            if self.config['model']['type'].lower() == 'vae':
-                if  "saxs" in self.config['run_name']:
-                    train_csv_indices = [pair[1] for pair in train_csv_indices_saxs_les]
-                    val_csv_indices = [pair[1] for pair in val_csv_indices_saxs_les]
-                    if self.config['training']['array_test_indices'] is not None :
-                        test_csv_indices = [pair[1] for pair in test_csv_indices_saxs_les]
+        train_indices_path = cfg_train.get('array_train_indices')
+        val_indices_path = cfg_train.get('array_val_indices')
+        test_indices_path = cfg_train.get('array_test_indices')
 
-                elif "les" in self.config['run_name'] :
-                    train_csv_indices = [pair[2] for pair in train_csv_indices_saxs_les]
-                    val_csv_indices = [pair[2] for pair in val_csv_indices_saxs_les]
-                    if self.config['training']['array_test_indices'] is not None :
-                        test_csv_indices = [pair[2] for pair in test_csv_indices_saxs_les]
+        loaders = {'train': None, 'val': None, 'test': None}
+        subsets = {}
 
-            elif self.config['model']['type'].lower() == 'pair_vae':
-                train_csv_indices = [pair[0] for pair in train_csv_indices_saxs_les]
-                val_csv_indices = [pair[0] for pair in val_csv_indices_saxs_les]
-                if self.config['training']['array_test_indices'] is not None :
-                    test_csv_indices = [pair[0] for pair in test_csv_indices_saxs_les]
+        if train_indices_path and val_indices_path:
+            train_indices_raw = np.load(train_indices_path, allow_pickle=True) if train_indices_path else None
+            val_indices_raw = np.load(val_indices_path, allow_pickle=True) if val_indices_path else None
+            test_indices_raw = np.load(test_indices_path, allow_pickle=True) if test_indices_path else None
 
-            train_dataset = build_subset(self.dataset, train_csv_indices)
-            validation_subset   = build_subset(self.dataset, val_csv_indices)
-            if self.config['training']['array_test_indices'] is not None :
-                test_subset   = build_subset(self.dataset, test_csv_indices)
+            model_type = self.cfg_model['type'].lower()
+            model_spec = self.cfg_model.get('spec').lower()
+
+            def extract_indices(data, pos, split_name):
+                try:
+                    return [pair[pos] for pair in data]
+                except Exception as e:
+                    raise ValueError(
+                        f"Failed to extract {split_name} indices at position {pos}. "
+                        f"Expected each element to be an iterable with at least {pos + 1} entries. "
+                        f"Received structure: {type(data)} (length={len(data)}). "
+                        f"Error details: {e}. "
+                        f"Check the content and shape of the file used for '{split_name}' indices."
+                    ) from e
+
+            if model_type == 'vae':
+                if model_spec == 'saxs':
+                    pos = 1
+                elif model_spec == 'les':
+                    pos = 2
+                else:
+                    raise ValueError("For VAE, cfg_model['spec'] must be 'saxs' or 'les'.")
+            elif model_type == 'pair_vae':
+                pos = 0
+            else:
+                raise ValueError(f"Unsupported model type: {model_type}")
+
+            train_indices = extract_indices(train_indices_raw, pos, 'train')
+            val_indices = extract_indices(val_indices_raw, pos, 'validation')
+            if test_indices_raw is not None:
+                test_indices = extract_indices(test_indices_raw, pos, 'test')
+
+            if train_indices is None:
+                raise AssertionError("Train indices must be provided if using index arrays.")
+            if val_indices is None:
+                raise AssertionError("Validation indices must be provided when train indices are given.")
+
+            subsets['train'] = build_subset(self.dataset, train_indices)
+            subsets['val'] = build_subset(self.dataset, val_indices)
+            if test_indices is not None:
+                subsets['test'] = build_subset(self.dataset, test_indices)
 
         else:
+            logger.warning("No index arrays provided; using 80/20 random split for training and validation.")
             total_samples = len(self.dataset)
             train_count = int(0.8 * total_samples)
-            validation_count = total_samples - train_count
-            if self.verbose:
-                logger.info(
-                    "Splitting dataset: train=%d, validation=%d",
-                    train_count,
-                    validation_count,
-                )
-            train_dataset, validation_subset = random_split(self.dataset, [train_count, validation_count])
+            val_count = total_samples - train_count
+            subsets['train'], subsets['val'] = random_split(self.dataset, [train_count, val_count])
+            if test_indices_path:
+                logger.warning("Test indices array provided without train/val indices; ignoring test split.")
 
-        batch_size = self.config['training']['batch_size']
-        num_workers = self.config['training'].get('num_workers', min(1, os.cpu_count()))
-        if self.verbose:
-            logger.info(
-                "Creating DataLoaders with batch_size=%d, num_workers=%d",
-                batch_size,
-                num_workers,
-            )
-        training_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-        validation_loader = DataLoader(validation_subset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
-        test_dataloader = None
-        if self.config['training']['array_test_indices'] is not None :
-            test_dataloader = DataLoader(test_subset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+        batch_size = cfg_train['batch_size']
+        num_workers = cfg_train.get('num_workers', min(1, os.cpu_count()))
 
-        return training_loader, validation_loader, test_dataloader
+        logger.info("Building DataLoaders (batch_size=%d, num_workers=%d)", batch_size, num_workers)
+
+        if 'train' in subsets:
+            loaders['train'] = DataLoader(subsets['train'], batch_size=batch_size, shuffle=True,
+                                          num_workers=num_workers)
+        if 'val' in subsets:
+            loaders['val'] = DataLoader(subsets['val'], batch_size=batch_size, shuffle=False, num_workers=num_workers)
+        if 'test' in subsets:
+            loaders['test'] = DataLoader(subsets['test'], batch_size=batch_size, shuffle=False, num_workers=num_workers)
+
+        return loaders['train'], loaders['val'], loaders['test']
 
     def _configure_trainer(self):
         """Configure callbacks, logging, and return a Lightning trainer."""
@@ -289,7 +312,6 @@ class TrainPipeline:
         if self.verbose:
             logger.info("Fichier YAML sauvegardé dans : %s", file_path)
 
-        # Only use MLFlow-specific logging if we have MLFlow logger
         if hasattr(self.trainer.logger, 'experiment') and hasattr(self.trainer.logger.experiment, 'log_artifact'):
             self.trainer.logger.experiment.log_artifact(
                 local_path=str(file_path),
@@ -305,7 +327,6 @@ class TrainPipeline:
                 self.log_path / 'val_indices.npy',
             )
 
-        # Only use MLFlow-specific logging if we have MLFlow logger
         if hasattr(self.trainer.logger, 'experiment') and hasattr(self.trainer.logger.experiment, 'log_artifact'):
             self.trainer.logger.experiment.log_artifact(local_path=str(self.log_path / 'train_indices.npy'),
                                                         run_id=self.trainer.logger.run_id)

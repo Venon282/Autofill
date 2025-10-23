@@ -17,8 +17,8 @@ transforms_data:
 
 training:
   output_dir: "runs/"
-  array_train_indices: DATA/train_pairs_saxs_les.npy
-  array_val_indices: DATA/val_pairs_saxs_les.npy
+#  array_train_indices: DATA/train_pairs_saxs_les.npy
+#  array_val_indices: DATA/val_pairs_saxs_les.npy
   array_test_indices: DATA/test_pairs_saxs_les.npy
   weighted_loss : True
   weighted_loss_limit_index: 300
@@ -39,6 +39,7 @@ training:
 model:
   vae_class: ResVAEBN
   type: vae
+  spec: saxs
   args:
     in_channels: 1
     output_channels: 1

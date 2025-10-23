@@ -76,6 +76,7 @@ VAE model (single modality)
 
    model:
      type: "vae"
+     spec: "saxs"  # or "les"
      latent_dim: 128
      encoder_layers: [512, 256, 128]
      decoder_layers: [128, 256, 512]
@@ -90,6 +91,9 @@ VAE model (single modality)
 
     .. note::
        This parameter can be overridden using the ``--mode`` command-line argument when running ``03_train.py``. This allows you to switch between VAE and PairVAE models using the same configuration file by specifying ``--mode vae`` or ``--mode pair_vae``.
+
+``spec`` (string, required)
+    Data modality. Options: ``"saxs"``, ``"les"`` .
 
 ``latent_dim`` (int, default: 128)
     Dimensionality of the latent space.

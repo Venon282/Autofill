@@ -37,7 +37,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train a VAE or PairVAE model.")
     parser.add_argument("--mode", type=str, choices=["vae", "pair_vae"], help="Model family to train.")
     parser.add_argument("--gridsearch", action="store_true", default=False, help="Run hyper-parameter search instead of a single training run.")
-    parser.add_argument("--spec", type=str, choices=["saxs", "les", "pair"], help="Model specification to train.")
+    parser.add_argument("--spec", type=str, choices=["saxs", "les", "pair"], help="Model specification to train.", default=None)
     parser.add_argument("--config", type=str, default="model/VAE/vae_config_saxs.yaml", help="Path to the YAML configuration file.")
     parser.add_argument("--name", type=str, default=None, help="Optional run name overriding the config.")
     parser.add_argument("--hdf5_file", type=str, default=None, help="Override the dataset HDF5 file path.")
@@ -71,8 +71,6 @@ def main() -> None:
         logger.error("Error loading configuration file: %s", e)
         sys.exit(1)
 
-    config["model"]["spec"] = args.spec
-
     if args.name:
         config["run_name"] = args.name
     if args.hdf5_file:
@@ -87,9 +85,14 @@ def main() -> None:
     if args.material:
         config.setdefault("dataset", {})["material"] = args.material
         logger.warning("Filtering dataset to material: %s", args.material)
+    if args.spec:
+        config["model"]["spec"] = args.spec
+        logger.warning("Using model specification from argument: %s", args.spec)
+
 
     if not args.mode and "model" in config and "type" in config["model"]:
         args.mode = config["model"]["type"]
+        logger.warning("Using model type from config: %s", args.mode)
     config["model"]["type"] = args.mode
 
     if args.technique and args.technique in TRANSFORM_OVERRIDES:

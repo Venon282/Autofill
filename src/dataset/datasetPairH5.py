@@ -37,7 +37,7 @@ class PairHDF5Dataset(Dataset):
         self.hdf = h5py.File(hdf5_file, 'r', swmr=True)
         self.use_data_q = use_data_q
 
-        required_keys = ['data_q_saxs', 'data_y_saxs', 'data_q_les', 'data_y_les', 'csv_index']
+        required_keys = ['data_q_saxs', 'data_y_saxs', 'data_q_les', 'data_y_les']
         missing = [k for k in required_keys if k not in self.hdf]
         if missing:
             raise RuntimeError(
@@ -50,7 +50,7 @@ class PairHDF5Dataset(Dataset):
         self.data_y_saxs = self.hdf['data_y_saxs']
         self.data_q_les = self.hdf['data_q_les']
         self.data_y_les = self.hdf['data_y_les']
-        self.csv_index = self.hdf['csv_index']
+        self.csv_index = self.hdf.get('csv_index', None)
 
         if self.use_data_q:
             first_q_saxs = self.data_q_saxs[0]
@@ -83,7 +83,7 @@ class PairHDF5Dataset(Dataset):
         self.transformer_y_les = _ensure_pipeline(transformer_y_les)
 
         all_metadata_cols = [col for col in self.hdf.keys() if col not in
-                             ['data_q_saxs', 'data_y_saxs', 'data_q_les', 'data_y_les', 'len', 'csv_index']]
+                             ['data_q_saxs', 'data_y_saxs', 'data_q_les', 'data_y_les', 'len']]
         self.metadata_datasets = {col: self.hdf[col] for col in all_metadata_cols}
 
         self.requested_metadata = self._validate_requested_metadata(requested_metadata, all_metadata_cols)
@@ -209,12 +209,12 @@ class PairHDF5Dataset(Dataset):
             "data_y_saxs": data_y_saxs,
             "data_y_les": data_y_les,
             "metadata": metadata,
-            "csv_index": self.csv_index[original_idx],
         }
         if data_q_saxs is not None and data_q_les is not None:
             batch["data_q_saxs"] = data_q_saxs
             batch["data_q_les"] = data_q_les
-
+        if self.csv_index is not None:
+            batch["csv_index"] = self.csv_index[original_idx]
         return batch
 
     def close(self):

@@ -72,20 +72,17 @@ class HDF5Dataset(Dataset):
             "H5 file is empty. Check your metadata filters and make sure they are not too restrictive."
         )
 
-        # --- Transform pipelines ---
         self.transformer_q = _ensure_pipeline(transformer_q)
         self.transformer_y = _ensure_pipeline(transformer_y)
 
-        # --- Lengths and indices ---
-        self.csv_index = self.hdf['csv_index']
+        self.csv_index = self.hdf.get('csv_index', None)
         if "len" in self.hdf.keys():
             self.len = self.hdf["len"][()]
         else:
             self.len = np.full(len(self.data_y), DEFAULT_LENGTH_DATA)
 
-        # --- Metadata loading ---
         all_metadata_cols = [col for col in self.hdf.keys() if col not in
-                             ['data_q', 'data_y', 'len', 'csv_index', 'data_wavelength']]
+                             ['data_q', 'data_y', 'len', 'data_wavelength']]
         self.metadata_datasets = {col: self.hdf[col] for col in all_metadata_cols}
         self.requested_metadata = self._validate_requested_metadata(requested_metadata, all_metadata_cols)
 
@@ -214,9 +211,11 @@ class HDF5Dataset(Dataset):
             "data_y": data_y_transformed,
             "data_y_untransformed": torch.as_tensor(data_y, dtype=torch.float32).unsqueeze(0),
             "metadata": metadata,
-            "csv_index": self.csv_index[original_idx],
             "len": self.len[original_idx],
         }
+
+        if self.csv_index is not None:
+            batch["csv_index"] = self.csv_index[original_idx]
 
         if data_q is not None:
             batch["data_q"] = data_q

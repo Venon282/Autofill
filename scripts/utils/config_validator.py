@@ -59,6 +59,11 @@ def validate_config_and_files(config: dict[str, Any], args: argparse.Namespace) 
             logger.info("Model type: %s", model_type)
 
         logger.info("Latent dim: %s", model_config.get("latent_dim", "default: 128"))
+        if model_type != "pair_vae":
+            if 'spec' not in model_config:
+                errors.append("Missing required model config key for VAE: 'spec'")
+            else:
+                model_config['spec'] in ["saxs", "les"] or errors.append("Invalid model spec for VAE: must be 'saxs' or 'les'")
 
     # Validate dataset configuration
     if "dataset" in config:
@@ -89,23 +94,26 @@ def validate_config_and_files(config: dict[str, Any], args: argparse.Namespace) 
                          'output_dir']
         training_config = config["training"]
 
-        # Check training indices
         train_indices = training_config.get("array_train_indices")
         val_indices = training_config.get("array_val_indices")
+        test_indices = training_config.get("array_test_indices")
 
-        if not train_indices:
-            errors.append("Missing training indices file path")
-        elif not os.path.exists(train_indices):
-            errors.append(f"Training indices file not found: {train_indices}")
-        else:
-            logger.info("Training indices found: %s", train_indices)
+        if  train_indices:
+            if not os.path.exists(train_indices):
+                errors.append(f"Training indices file not found: {train_indices}")
+            else:
+                logger.info("Training indices found: %s", train_indices)
 
-        if not val_indices:
-            errors.append("Missing validation indices file path")
-        elif not os.path.exists(val_indices):
-            errors.append(f"Validation indices file not found: {val_indices}")
-        else:
-            logger.info("Validation indices found: %s", val_indices)
+        if val_indices:
+            if not os.path.exists(val_indices):
+                errors.append(f"Validation indices file not found: {val_indices}")
+            else:
+                logger.info("Validation indices found: %s", val_indices)
+        if test_indices:
+            if not os.path.exists(test_indices):
+                errors.append(f"Test indices file not found: {test_indices}")
+            else:
+                logger.info("Test indices found: %s", test_indices)
 
         num_gpus = training_config.get("num_gpus", DEFAULT_GPUS)
         for key in training_keys:

@@ -38,6 +38,7 @@ training:
 model:
   vae_class: ResVAEBN
   type: vae
+  spec: les
   args:
     in_channels: 1
     output_channels: 1

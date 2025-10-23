@@ -332,7 +332,7 @@ class PairingHDF5Converter:
         then split them into training and validation sets.
 
         Returns:
-            list: List of all paired tuples (index_pair, csv_index_saxs, csv_index_les)
+            list: List of all paired tuples (index_pair)
         """
         inverse_les = {v: k for k, v in dict_les.items()}
         inverse_saxs = {v: k for k, v in dict_saxs.items()}
@@ -401,9 +401,6 @@ class PairingHDF5Converter:
             "data_q_saxs": np.vstack(q_saxs).astype(float),
             "data_y_les": np.vstack(y_les).astype(float),
             "data_q_les": np.vstack(q_les).astype(float),
-            "csv_index": np.array(idx_pairs),
-            "csv_index_saxs": np.array(idx_saxs),
-            "csv_index_les": np.array(idx_les),
         }
 
         output_path = os.path.join(self.output_dir, self.output_filename)
