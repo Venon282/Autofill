@@ -58,8 +58,11 @@ def validate_config_and_files(config: dict[str, Any], args: argparse.Namespace) 
         else:
             logger.info("Model type: %s", model_type)
 
-        logger.info("Latent dim: %s", model_config.get("latent_dim", "default: 128"))
         if model_type != "pair_vae":
+            if "input_dim" not in model_config['args']:
+                errors.append("Missing required model config key: 'input_dim'")
+            if "latent_dim" not in model_config['args']:
+                errors.append("Missing required model config key: 'latent_dim'")
             if 'spec' not in model_config:
                 errors.append("Missing required model config key for VAE: 'spec'")
             else:

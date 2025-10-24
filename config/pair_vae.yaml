@@ -7,12 +7,12 @@ dataset:
   hdf5_file: "DATA/pair_all_data.hdf5"
   metadata_filters:
   requested_metadata: 
-  sample_frac: 1.0
+  sample_frac: 1
 
 training:
   output_dir: "runs/"
   num_gpus: 1
-  num_epochs: 1
+  num_epochs: 300
   warmup_epochs: 5
   patience: 20
   use_loglog: false
@@ -41,9 +41,9 @@ training:
 model:
   type: pair_vae
   VAE_LES:
-    path_checkpoint: train_results/AUTOFILL_LES/les_cylinder_ag/best.ckpt
+    path_checkpoint: runs/AUTOFILL_LES/les_cylinder_ag/best.ckpt
   VAE_SAXS:
-    path_checkpoint: train_results/AUTOFILL_SAXS/saxs_cylinder_ag/best.ckpt
+    path_checkpoint: runs/AUTOFILL_SAXS/saxs_cylinder_ag/best.ckpt
 
 param_grid:
   training.weight_latent_similarity: [0.005, 0.001]

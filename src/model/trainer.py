@@ -13,8 +13,6 @@ from lightning.pytorch.loggers import MLFlowLogger
 from torch.utils.data import DataLoader, random_split
 from uniqpath import unique_path
 
-torch.set_float32_matmul_precision('high')
-
 
 from src.dataset.datasetH5 import HDF5Dataset
 from src.dataset.datasetPairH5 import PairHDF5Dataset
@@ -26,9 +24,7 @@ from src.model.pairvae.pl_pairvae import PlPairVAE
 from src.model.vae.pl_vae import PlVAE
 from src.logging_utils import get_logger
 
-
 logger = get_logger(__name__)
-
 
 class TrainPipeline:
     """High-level orchestration class that instantiates data, model, and trainer."""

@@ -6,7 +6,7 @@ dataset:
   hdf5_file: DATA/cylinder_les_meta.h5
   metadata_filters:
   requested_metadata:
-  sample_frac: 1.0
+  sample_frac: 1
 transforms_data:
   y:
     PreprocessingLES:
