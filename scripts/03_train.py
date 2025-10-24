@@ -89,12 +89,6 @@ def main() -> None:
         config["model"]["spec"] = args.spec
         logger.warning("Using model specification from argument: %s", args.spec)
 
-
-    if not args.mode and "model" in config and "type" in config["model"]:
-        args.mode = config["model"]["type"]
-        logger.warning("Using model type from config: %s", args.mode)
-    config["model"]["type"] = args.mode
-
     if args.technique and args.technique in TRANSFORM_OVERRIDES:
         config.setdefault("transforms_data", {}).update(TRANSFORM_OVERRIDES[args.technique])
 

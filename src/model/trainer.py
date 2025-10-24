@@ -225,6 +225,7 @@ class TrainPipeline:
 
             train_indices = extract_indices(train_indices_raw, pos, 'train')
             val_indices = extract_indices(val_indices_raw, pos, 'validation')
+            test_indices = None
             if test_indices_raw is not None:
                 test_indices = extract_indices(test_indices_raw, pos, 'test')
 
