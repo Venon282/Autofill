@@ -195,7 +195,7 @@ class TrainPipeline:
             test_indices_raw = np.load(test_indices_path, allow_pickle=True) if test_indices_path else None
 
             model_type = self.cfg_model['type'].lower()
-            model_spec = self.cfg_model.get('spec').lower()
+            model_spec = self.cfg_model.get('spec', 'not defined').lower()
 
             def extract_indices(data, pos, split_name):
                 try:
@@ -214,9 +214,11 @@ class TrainPipeline:
                     pos = 1
                 elif model_spec == 'les':
                     pos = 2
+                elif model_type == 'not defined':
+                    raise ValueError("Model spec is 'not defined'; cannot determine index extraction position. choice : ['saxs', 'les', 'pair]")
                 else:
                     raise ValueError("For VAE, cfg_model['spec'] must be 'saxs' or 'les'.")
-            elif model_type == 'pair_vae':
+            elif model_type == 'pair' or model_type == 'pair_vae':
                 pos = 0
             else:
                 raise ValueError(f"Unsupported model type: {model_type}")
@@ -320,6 +322,8 @@ class TrainPipeline:
 
         np.save(self.log_path / 'train_indices.npy', self.training_loader.dataset.indices)
         np.save(self.log_path / 'val_indices.npy', self.validation_loader.dataset.indices)
+        if self.test_dataloader is not None:
+            np.save(self.log_path / 'test_indices.npy', self.test_dataloader.dataset.indices)
         if self.verbose:
             logger.info(
                 "Indices sauvegardés dans : %s et %s",

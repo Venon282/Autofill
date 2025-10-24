@@ -46,11 +46,12 @@ class PairHDF5Dataset(Dataset):
                 "Refer to the README (section 5) and generate it using scripts/05_pair_txtTOhdf5.py."
             )
 
+
         self.data_q_saxs = self.hdf['data_q_saxs']
         self.data_y_saxs = self.hdf['data_y_saxs']
         self.data_q_les = self.hdf['data_q_les']
         self.data_y_les = self.hdf['data_y_les']
-        self.csv_index = self.hdf.get('csv_index', None)
+        self.csv_index = self.hdf.get('csv_index')
 
         if self.use_data_q:
             first_q_saxs = self.data_q_saxs[0]

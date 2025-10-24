@@ -401,6 +401,9 @@ class PairingHDF5Converter:
             "data_q_saxs": np.vstack(q_saxs).astype(float),
             "data_y_les": np.vstack(y_les).astype(float),
             "data_q_les": np.vstack(q_les).astype(float),
+            "csv_index": np.array(idx_pairs),
+            "csv_index_saxs": np.array(idx_saxs),
+            "csv_index_les": np.array(idx_les),
         }
 
         output_path = os.path.join(self.output_dir, self.output_filename)
