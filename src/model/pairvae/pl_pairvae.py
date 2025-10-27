@@ -199,3 +199,9 @@ class PlPairVAE(pl.LightningModule):
             return self.data_q_les
         else:
             raise AttributeError("data_q_les is not set. Please ensure it is provided in the dataloader or config.")
+
+    def have_data_q_saxs(self):
+        return hasattr(self, 'data_q_saxs')
+
+    def have_data_q_les(self):
+        return hasattr(self, 'data_q_les')

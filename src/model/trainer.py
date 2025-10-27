@@ -26,6 +26,14 @@ from src.logging_utils import get_logger
 
 logger = get_logger(__name__)
 
+class NumpySafeDumper(yaml.SafeDumper):
+    pass
+
+def np_representer(dumper, data):
+    return dumper.represent_list(data.tolist())
+
+NumpySafeDumper.add_representer(np.ndarray, np_representer)
+
 class TrainPipeline:
     """High-level orchestration class that instantiates data, model, and trainer."""
 
@@ -43,6 +51,7 @@ class TrainPipeline:
                     default_flow_style=False,
                     sort_keys=False,
                     allow_unicode=True,
+                    Dumper=NumpySafeDumper
                 ),
             )
             logger.info("Building components")
@@ -116,11 +125,14 @@ class TrainPipeline:
             model = PlPairVAE(self.config)
             transform_les = model.get_transforms_data_les()
             transform_saxs = model.get_transforms_data_saxs()
+            # Determine whether to use data_q from dataset or not
+            use_data_q = not (model.have_data_q_les() and model.have_data_q_saxs())
             dataset = PairHDF5Dataset(**self.config['dataset'],
                                       transformer_q_saxs=Pipeline(transform_saxs["q"]),
                                       transformer_y_saxs=Pipeline(transform_saxs["y"]),
                                       transformer_q_les=Pipeline(transform_les["q"]),
-                                      transformer_y_les=Pipeline(transform_les["y"]))
+                                      transformer_y_les=Pipeline(transform_les["y"]),
+                                      use_data_q=use_data_q)
             # Save the data_q used for training in the config for hyperparameter logging
             self.cfg_model['data_q_saxs'] = dataset.get_data_q_saxs()
             self.cfg_model['data_q_les'] = dataset.get_data_q_les()
@@ -270,7 +282,7 @@ class TrainPipeline:
                                               every_n_epochs=self.config['training'].get('save_every', 1),
                                               dirpath=self.log_path,
                                               filename="best")
-        if "mlflow_uri" in self.config:
+        if "mlflow_uri" in self.config and self.config["mlflow_uri"] is not None:
             from dotenv import load_dotenv
             load_dotenv()
             self.logger = MLFlowLogger(
@@ -306,7 +318,7 @@ class TrainPipeline:
         """Persist configuration artifacts and log index arrays."""
         file_path = self.log_path / "config_model.yaml"
         with file_path.open("w", encoding="utf-8") as file:
-            yaml.dump(self.config, file, default_flow_style=False, allow_unicode=True)
+            yaml.dump(self.config, file, default_flow_style=False, allow_unicode=True, Dumper=NumpySafeDumper)
 
         if self.verbose:
             logger.info("Fichier YAML sauvegardé dans : %s", file_path)
