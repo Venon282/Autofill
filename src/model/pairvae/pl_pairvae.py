@@ -1,6 +1,7 @@
 """Lightning module orchestrating the PairVAE training loop."""
 
 import math
+from typing import Optional
 
 import lightning.pytorch as pl
 import torch
@@ -18,10 +19,18 @@ logger = get_logger(__name__)
 class PlPairVAE(pl.LightningModule):
     """Lightning integration of the :class:`PairVAE` model."""
 
-    def __init__(self, config, force_dataset_q=False):
+    def __init__(
+        self,
+        config,
+        force_dataset_q=False,
+        load_pretrained_from_path: Optional[bool] = None,
+    ):
         super().__init__()
         self.config = config
-        self.model = PairVAE(self.config["model"])
+        self.model = PairVAE(
+            self.config["model"],
+            load_pretrained_from_path=load_pretrained_from_path,
+        )
         self.barlow_twins_loss = BarlowTwinsLoss(self.config["training"]["lambda_param"])
         training_cfg = self.config["training"]
         self.weight_latent_similarity = training_cfg["weight_latent_similarity"]
@@ -205,3 +214,23 @@ class PlPairVAE(pl.LightningModule):
 
     def have_data_q_les(self):
         return hasattr(self, 'data_q_les')
+
+    @classmethod
+    def load_from_checkpoint(
+        cls,
+        checkpoint_path: str,
+        *args,
+        load_pretrained_from_path: Optional[bool] = False,
+        **kwargs,
+    ):
+        """Restore a :class:`PlPairVAE` while defaulting to in-memory sub-VAEs."""
+
+        if "load_pretrained_from_path" in kwargs:
+            load_pretrained_from_path = kwargs.pop("load_pretrained_from_path")
+
+        return super().load_from_checkpoint(
+            checkpoint_path,
+            *args,
+            load_pretrained_from_path=load_pretrained_from_path,
+            **kwargs,
+        )

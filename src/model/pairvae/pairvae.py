@@ -1,5 +1,7 @@
 """Wrapper combining two single-domain VAEs into a paired objective."""
 
+from typing import Optional
+
 import torch
 import torch.nn as nn
 
@@ -9,17 +11,106 @@ from src.model.vae.pl_vae import PlVAE
 class PairVAE(nn.Module):
     """Compose SAXS and LES VAEs to enable cross-reconstruction."""
 
-    def __init__(self, config):
+    def __init__(
+        self,
+        config,
+        *,
+        load_pretrained_from_path: Optional[bool] = None,
+        map_location=None,
+    ):
         super().__init__()
         self.config = config
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.vae_saxs = PlVAE.load_from_checkpoint(self.config["VAE_SAXS"]["path_checkpoint"]).to(self.device)
-        self._vae_saxs_config = self.vae_saxs.config
-        self.vae_les = PlVAE.load_from_checkpoint(self.config["VAE_LES"]["path_checkpoint"]).to(self.device)
-        self._vae_les_config = self.vae_les.config
+        self._map_location = map_location if map_location is not None else self.device
+        self.vae_saxs, self._vae_saxs_config = self._load_subvae(
+            domain="saxs",
+            sub_config=self.config["VAE_SAXS"],
+            load_from_path=load_pretrained_from_path,
+        )
+        self.vae_les, self._vae_les_config = self._load_subvae(
+            domain="les",
+            sub_config=self.config["VAE_LES"],
+            load_from_path=load_pretrained_from_path,
+        )
+
+        # Persist resolved sub-VAE configuration in the hyperparameters so that
+        # checkpoints remain self-contained and can be reloaded on a different
+        # machine without the original checkpoint paths.
+        self.config["VAE_SAXS"]["config"] = self._vae_saxs_config
+        self.config["VAE_LES"]["config"] = self._vae_les_config
+
+        print("_vae_saxs_config: ", self.config["VAE_SAXS"])
+        print("_vae_les_config: ", self.config["VAE_LES"])
 
         ok, msg = self.check_models_compatible(raise_on_mismatch=False)
         assert ok, msg
+
+    def _load_subvae(
+        self,
+        domain: str,
+        sub_config: dict,
+        load_from_path: Optional[bool],
+    ):
+        """Instantiate one of the constituent VAEs.
+
+        Parameters
+        ----------
+        domain:
+            Either ``"saxs"`` or ``"les"``.
+        sub_config:
+            Configuration dictionary taken from ``self.config`` for the
+            corresponding VAE. It may contain the keys ``path_checkpoint`` and
+            ``config``.
+        load_from_path:
+            Whether to attempt loading weights from ``path_checkpoint``. During
+            PairVAE training this is ``True`` so we can bootstrap the model from
+            separately trained VAEs. When ``None`` the loader infers the
+            behaviour automatically: it loads from the checkpoint path only if
+            a path is provided *and* no stored configuration is available in the
+            PairVAE checkpoint. When restoring a PairVAE checkpoint for
+            inference we therefore default to using the stored configuration,
+            avoiding dependence on file paths that may no longer exist.
+        """
+
+        checkpoint_path = sub_config.get("path_checkpoint")
+        stored_config = sub_config.get("config")
+        was_resolved = bool(stored_config.get("resolved", False))
+
+        if load_from_path is None:
+            if was_resolved:
+                # When the PairVAE is restored from one of its own checkpoints we
+                # prefer using the stored configuration instead of reloading the
+                # constituent VAEs from potentially stale filesystem paths.
+                load_from_path = False
+            else:
+                # During fresh training runs we expect valid checkpoint paths in
+                # the configuration so that the pretrained VAEs can be used to
+                # initialise the PairVAE weights.
+                load_from_path = bool(checkpoint_path)
+
+        if load_from_path and checkpoint_path:
+            vae = PlVAE.load_from_checkpoint(checkpoint_path, map_location=self._map_location).to(self.device)
+            vae_config = getattr(vae, "config", None)
+            if vae_config is None:
+                raise ValueError(f"Loaded {domain.upper()} VAE from '{checkpoint_path}' without configuration")
+        else:
+            if stored_config is None:
+                raise ValueError(
+                    "Cannot instantiate {dom} VAE without a stored configuration. "
+                    "Ensure the PairVAE checkpoint was saved with sub-vae configs or provide valid paths."
+                    .format(dom=domain.upper())
+                )
+            vae = PlVAE(stored_config).to(self.device)
+            vae_config = stored_config
+
+        vae_config.update(
+            {
+                "resolved": True,
+                "last_source": "path" if load_from_path and checkpoint_path else "config",
+            }
+        )
+
+        return vae, vae_config
 
     def forward(self, batch):
         """Return reconstructions and latent representations for paired inputs.

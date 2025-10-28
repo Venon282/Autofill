@@ -63,7 +63,7 @@ def main() -> None:
     args = parse_args()
     checkpoint_path = args.checkpoint
 
-    hparams = torch.load(checkpoint_path, map_location="cpu")["hyper_parameters"]["config"]
+    hparams = torch.load(checkpoint_path, map_location="cpu", weights_only=False)["hyper_parameters"]["config"]
     model_type = hparams["model"]["type"]
 
     if model_type.lower() not in ["vae", "pair_vae"]:
