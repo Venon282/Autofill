@@ -91,6 +91,7 @@ class TrainPipeline:
         training.setdefault('plot_train', True)
         training.setdefault('every_n_epochs', 10)
         training.setdefault('num_samples', 10)
+        training.setdefault('weighted_loss', False)
         config['training'] = training
 
         if 'type' not in config['model']:

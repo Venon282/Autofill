@@ -75,6 +75,8 @@ class BaseInferencer(abc.ABC):
         self.invert = lambda y, q: (y, q)
         self.format = ''
         self.compute_dataset(self.get_input_dim())
+        logger.info("Dataset prepared with %d samples", len(self.dataset))
+        logger.info("Device set to %s", self.device)
 
     @abc.abstractmethod
     def get_input_dim(self) -> Optional[int]:
@@ -138,7 +140,7 @@ class BaseInferencer(abc.ABC):
 
     def infer(self) -> None:
         """Execute :meth:`infer_and_save` and report the output location."""
-
+        logger.info("Starting inference...")
         self.infer_and_save()
         logger.info("Inference results saved in %s", self.output_dir)
 
@@ -283,7 +285,7 @@ class PairVAEInferencer(BaseInferencer):
         input_transformers = transformers[config['input']]
         output_transformers = transformers[config['output']]
 
-        if self.data_path.endswith(".h5"):
+        if self.data_path.endswith(".h5") or self.data_path.endswith(".hdf5"):
             self.dataset = HDF5Dataset(
                 self.data_path,
                 sample_frac=self.sample_frac,
@@ -310,8 +312,8 @@ class PairVAEInferencer(BaseInferencer):
             raise ValueError("Unsupported file format. Use .h5 or .csv")
 
         def invert(y, q):
-            y_inv = output_transformers['y'].invert(y)
-            q_inv = output_transformers['q'].invert(q)
+            y_inv = output_transformers['y'].invert(y.cpu())
+            q_inv = output_transformers['q'].invert(q.cpu())
             return y_inv, q_inv
 
         self.invert = invert

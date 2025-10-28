@@ -39,9 +39,6 @@ class PairVAE(nn.Module):
         self.config["VAE_SAXS"]["config"] = self._vae_saxs_config
         self.config["VAE_LES"]["config"] = self._vae_les_config
 
-        print("_vae_saxs_config: ", self.config["VAE_SAXS"])
-        print("_vae_les_config: ", self.config["VAE_LES"])
-
         ok, msg = self.check_models_compatible(raise_on_mismatch=False)
         assert ok, msg
 
@@ -73,7 +70,7 @@ class PairVAE(nn.Module):
         """
 
         checkpoint_path = sub_config.get("path_checkpoint")
-        stored_config = sub_config.get("config")
+        stored_config = sub_config
         was_resolved = bool(stored_config.get("resolved", False))
 
         if load_from_path is None:
@@ -100,7 +97,7 @@ class PairVAE(nn.Module):
                     "Ensure the PairVAE checkpoint was saved with sub-vae configs or provide valid paths."
                     .format(dom=domain.upper())
                 )
-            vae = PlVAE(stored_config).to(self.device)
+            vae = PlVAE(stored_config['config']).to(self.device)
             vae_config = stored_config
 
         vae_config.update(

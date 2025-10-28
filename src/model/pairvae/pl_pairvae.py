@@ -47,7 +47,8 @@ class PlPairVAE(pl.LightningModule):
             config_key = f"data_q_{data_type}"
             if not force_dataset_q and config_key in self.config["model"]:
                 assert  self.config['model'][config_key] is not None, f"{config_key} in config cannot be None if used."
-                setattr(self, config_key, self.config['model'][config_key])
+                data = torch.tensor(self.config["model"][config_key], device=self.device)
+                setattr(self, config_key,data)
                 logger.warning("Using %s from configuration", config_key)
             else:
                 if force_dataset_q and config_key in self.config["model"]:
@@ -156,26 +157,31 @@ class PlPairVAE(pl.LightningModule):
         }, data_q
 
     def les_to_saxs(self, batch):
-        les_batch, _ = self._prepare_batch(batch, 'les')
-        output_les = self.model.vae_les(les_batch)
-        recon_les2saxs = self.model.vae_saxs.decode(output_les["z"])
+        with torch.no_grad():
+            les_batch, _ = self._prepare_batch(batch, 'les')
+            output_les = self.model.vae_les(les_batch)
+            recon_les2saxs = self.model.vae_saxs.decode(output_les["z"])
         return recon_les2saxs, self.get_data_q_saxs() if hasattr(self, 'data_q_saxs') else data_q
+
     def saxs_to_les(self, batch):
-        saxs_batch, _ = self._prepare_batch(batch, 'saxs')
-        output_saxs = self.model.vae_saxs(saxs_batch)
-        recon_saxs2les = self.model.vae_les.decode(output_saxs["z"])
+        with torch.no_grad():
+            saxs_batch, _ = self._prepare_batch(batch, 'saxs')
+            output_saxs = self.model.vae_saxs(saxs_batch)
+            recon_saxs2les = self.model.vae_les.decode(output_saxs["z"])
         return recon_saxs2les, self.get_data_q_les() if hasattr(self, 'data_q_les')else data_q
 
     def saxs_to_saxs(self, batch):
-        saxs_batch, data_q = self._prepare_batch(batch, 'saxs')
-        output_saxs = self.model.vae_saxs(saxs_batch)
-        recon_saxs2saxs = self.model.vae_saxs.decode(output_saxs["z"])
+        with torch.no_grad():
+            saxs_batch, data_q = self._prepare_batch(batch, 'saxs')
+            output_saxs = self.model.vae_saxs(saxs_batch)
+            recon_saxs2saxs = self.model.vae_saxs.decode(output_saxs["z"])
         return recon_saxs2saxs, self.get_data_q_saxs() if hasattr(self, 'data_q_saxs') else data_q
 
     def les_to_les(self, batch):
-        les_batch, data_q = self._prepare_batch(batch, 'les')
-        output_les = self.model.vae_les(les_batch)
-        recon_les2les = self.model.vae_les.decode(output_les["z"])
+        with torch.no_grad():
+            les_batch, data_q = self._prepare_batch(batch, 'les')
+            output_les = self.model.vae_les(les_batch)
+            recon_les2les = self.model.vae_les.decode(output_les["z"])
         return recon_les2les, self.get_data_q_les() if hasattr(self, 'data_q_les') else data_q
 
     @staticmethod

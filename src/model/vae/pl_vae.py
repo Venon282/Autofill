@@ -19,10 +19,13 @@ class PlVAE(pl.LightningModule):
         super().__init__()
         if config is None and not hasattr(self, 'config'):
             raise ValueError("Configuration dictionary is required for PlVAE.")
-        # print(f"[PlVAE] Initializing with config: {config}")
+        print(f"[PlVAE] Initializing with config: {config}")
         if config is not None:
             self.config = config
-        self.beta = config["training"]["beta"]
+        try:
+            self.beta = config["training"]["beta"]
+        except:
+            self.beta = 1.0e-06
         model_class = self.config["model"]["vae_class"]
         self.model = MODEL_REGISTRY.get(model_class)(**self.config["model"]["args"])
         if not force_dataset_q and "data_q" in self.config["model"]:
