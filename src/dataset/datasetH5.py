@@ -47,7 +47,6 @@ class HDF5Dataset(Dataset):
         self.hdf = h5py.File(hdf5_file, 'r', swmr=True)
         self.use_data_q = use_data_q
 
-        # --- Load q or wavelength data ---
         if self.use_data_q:
             try:
                 if "data_q" in self.hdf:
@@ -57,7 +56,6 @@ class HDF5Dataset(Dataset):
             except Exception as e:
                 raise ValueError(f"Error loading 'data_q' or 'data_wavelength' from HDF5 file: {e}")
 
-            # Sanity check: ensure all q arrays are identical
             first_q = self.data_q[0]
             for i in tqdm(range(len(self.data_q)), desc="Sanity checking H5", leave=False):
                 if not np.array_equal(self.data_q[i], first_q):
@@ -129,7 +127,7 @@ class HDF5Dataset(Dataset):
         valid = [col for col in requested if col in available]
         missing = set(requested) - set(valid)
         if missing:
-            warnings.warn(f"Missing requested metadata columns: {missing}, available: {available}")
+            logger.warning(f"Missing requested metadata columns: {missing}, available: {available}")
         return valid
 
     def _validate_frac(self, sample_frac):

@@ -1,212 +1,149 @@
-"""Wrapper combining two single-domain VAEs into a paired objective."""
-
-from typing import Optional
+"""Wrapper combining two pretrained single-domain VAEs into a paired objective."""
 
 import torch
 import torch.nn as nn
+from lightning.pytorch import LightningModule
 
+from model.vae.configs import VAETrainingConfig, VAEModelConfig
 from src.model.vae.pl_vae import PlVAE
 
 
-class PairVAE(nn.Module):
-    """Compose SAXS and LES VAEs to enable cross-reconstruction."""
+class PairVAE(LightningModule):
+    """Compose two pretrained VAEs to enable cross-domain reconstruction."""
 
-    def __init__(
-        self,
-        config,
-        *,
-        load_pretrained_from_path: Optional[bool] = None,
-        map_location=None,
-    ):
+    def __init__(self,
+                 vae_saxs: PlVAE | None = None,
+                 vae_les: PlVAE | None = None,
+                 ckpt_path_saxs: str | None = None,
+                 ckpt_path_les: str | None = None,
+                 lr: float = 1e-4,
+                 freeze_subvae: bool = False,
+                 *args, **kwargs):
+        """Initialize the paired VAE from pretrained single-domain VAEs.
+
+        Args:
+            vae_saxs (PlVAE | None): Preloaded SAXS VAE instance.
+            vae_les (PlVAE | None): Preloaded LES VAE instance.
+            ckpt_path_saxs (str | None): Optional checkpoint path for SAXS VAE.
+            ckpt_path_les (str | None): Optional checkpoint path for LES VAE.
+            lr (float): Learning rate for PairVAE training.
+            freeze_subvae (bool): Whether to freeze sub-VAEs during training.
+        """
         super().__init__()
-        self.config = config
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self._map_location = map_location if map_location is not None else self.device
-        self.vae_saxs, self._vae_saxs_config = self._load_subvae(
-            domain="saxs",
-            sub_config=self.config["VAE_SAXS"],
-            load_from_path=load_pretrained_from_path,
-        )
-        self.vae_les, self._vae_les_config = self._load_subvae(
-            domain="les",
-            sub_config=self.config["VAE_LES"],
-            load_from_path=load_pretrained_from_path,
-        )
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        # Persist resolved sub-VAE configuration in the hyperparameters so that
-        # checkpoints remain self-contained and can be reloaded on a different
-        # machine without the original checkpoint paths.
-        self.config["VAE_SAXS"]["config"] = self._vae_saxs_config
-        self.config["VAE_LES"]["config"] = self._vae_les_config
+        if vae_saxs is None:
+            assert ckpt_path_saxs, "Either a PlVAE instance or a checkpoint path must be provided for SAXS."
+            vae_saxs = PlVAE.load_from_checkpoint(ckpt_path_saxs).to(device)
+        if vae_les is None:
+            assert ckpt_path_les, "Either a PlVAE instance or a checkpoint path must be provided for LES."
+            vae_les = PlVAE.load_from_checkpoint(ckpt_path_les).to(device)
+
+        self.vae_saxs = vae_saxs
+        self.vae_les = vae_les
+        self.lr = lr
+        self.freeze_subvae = freeze_subvae
+
+        if freeze_subvae:
+            for p in self.vae_saxs.parameters():
+                p.requires_grad = False
+            for p in self.vae_les.parameters():
+                p.requires_grad = False
 
         ok, msg = self.check_models_compatible(raise_on_mismatch=False)
         assert ok, msg
 
-    def _load_subvae(
-        self,
-        domain: str,
-        sub_config: dict,
-        load_from_path: Optional[bool],
-    ):
-        """Instantiate one of the constituent VAEs.
+        self.save_hyperparameters(ignore=["vae_saxs", "vae_les"])
 
-        Parameters
-        ----------
-        domain:
-            Either ``"saxs"`` or ``"les"``.
-        sub_config:
-            Configuration dictionary taken from ``self.config`` for the
-            corresponding VAE. It may contain the keys ``path_checkpoint`` and
-            ``config``.
-        load_from_path:
-            Whether to attempt loading weights from ``path_checkpoint``. During
-            PairVAE training this is ``True`` so we can bootstrap the model from
-            separately trained VAEs. When ``None`` the loader infers the
-            behaviour automatically: it loads from the checkpoint path only if
-            a path is provided *and* no stored configuration is available in the
-            PairVAE checkpoint. When restoring a PairVAE checkpoint for
-            inference we therefore default to using the stored configuration,
-            avoiding dependence on file paths that may no longer exist.
-        """
+    def forward(self, batch: dict) -> dict:
+        """Perform paired forward passes and cross-domain reconstructions."""
+        metadata = batch.get("metadata", None)
 
-        checkpoint_path = sub_config.get("path_checkpoint")
-        stored_config = sub_config
-        was_resolved = bool(stored_config.get("resolved", False))
+        out_saxs = self.vae_saxs({
+            "data_y": batch["data_y_saxs"],
+            "data_q": batch["data_q_saxs"],
+            "metadata": metadata,
+        })
+        out_les = self.vae_les({
+            "data_y": batch["data_y_les"],
+            "data_q": batch["data_q_les"],
+            "metadata": metadata,
+        })
 
-        if load_from_path is None:
-            if was_resolved:
-                # When the PairVAE is restored from one of its own checkpoints we
-                # prefer using the stored configuration instead of reloading the
-                # constituent VAEs from potentially stale filesystem paths.
-                load_from_path = False
-            else:
-                # During fresh training runs we expect valid checkpoint paths in
-                # the configuration so that the pretrained VAEs can be used to
-                # initialise the PairVAE weights.
-                load_from_path = bool(checkpoint_path)
+        recon_les2saxs = self.vae_saxs.decode(out_les["z"])
+        recon_saxs2les = self.vae_les.decode(out_saxs["z"])
 
-        if load_from_path and checkpoint_path:
-            vae = PlVAE.load_from_checkpoint(checkpoint_path, map_location=self._map_location).to(self.device)
-            vae_config = getattr(vae, "config", None)
-            if vae_config is None:
-                raise ValueError(f"Loaded {domain.upper()} VAE from '{checkpoint_path}' without configuration")
-        else:
-            if stored_config is None:
-                raise ValueError(
-                    "Cannot instantiate {dom} VAE without a stored configuration. "
-                    "Ensure the PairVAE checkpoint was saved with sub-vae configs or provide valid paths."
-                    .format(dom=domain.upper())
-                )
-            vae = PlVAE(stored_config['config']).to(self.device)
-            vae_config = stored_config
-
-        vae_config.update(
-            {
-                "resolved": True,
-                "last_source": "path" if load_from_path and checkpoint_path else "config",
-            }
-        )
-
-        return vae, vae_config
-
-    def forward(self, batch):
-        """Return reconstructions and latent representations for paired inputs.
-
-        inputs: dict with keys:
-            - data_y_saxs: SAXS data tensor
-            - data_y_les: LES data tensor
-            - data_q_saxs: SAXS q-values tensor
-            - data_q_les: LES q-values tensor
-            - metadata: metadata dictionary
-
-        returns: dict with keys:
-        """
-
-        metadata = batch["metadata"]
-        batch_saxs = {"data_y": batch["data_y_saxs"],"data_q": batch["data_q_saxs"], "metadata": metadata}
-        output_saxs = self.vae_saxs(batch_saxs)
-        batch_les = {"data_y": batch["data_y_les"],"data_q": batch["data_q_les"], "metadata": metadata}
-        output_les = self.vae_les(batch_les)
-        recon_les2saxs = self.vae_saxs.decode(output_les["z"])
-        recon_saxs2les = self.vae_les.decode(output_saxs["z"])
         return {
-            "recon_saxs": output_saxs["recon"],
-            "recon_les": output_les["recon"],
+            "recon_saxs": out_saxs["recon"],
+            "recon_les": out_les["recon"],
             "recon_saxs2les": recon_saxs2les,
             "recon_les2saxs": recon_les2saxs,
-            "z_saxs": output_saxs["z"],
-            "z_les": output_les["z"],
+            "z_saxs": out_saxs["z"],
+            "z_les": out_les["z"],
         }
 
-    def get_les_config(self):
-        """Return the configuration used to train the LES VAE."""
+    def training_step(self, batch, batch_idx):
+        """Compute joint reconstruction and cross-domain loss."""
+        out = self.forward(batch)
+        loss_saxs = torch.nn.functional.mse_loss(out["recon_saxs"], batch["data_y_saxs"])
+        loss_les = torch.nn.functional.mse_loss(out["recon_les"], batch["data_y_les"])
+        loss_cross_1 = torch.nn.functional.mse_loss(out["recon_les2saxs"], batch["data_y_saxs"])
+        loss_cross_2 = torch.nn.functional.mse_loss(out["recon_saxs2les"], batch["data_y_les"])
+        total_loss = loss_saxs + loss_les + 0.5 * (loss_cross_1 + loss_cross_2)
+        self.log_dict({
+            "train_loss": total_loss,
+            "recon_saxs": loss_saxs,
+            "recon_les": loss_les,
+            "cross_saxs2les": loss_cross_2,
+            "cross_les2saxs": loss_cross_1,
+        }, prog_bar=True, on_epoch=True)
+        return total_loss
 
-        return self._vae_les_config
+    def configure_optimizers(self):
+        return torch.optim.AdamW(self.parameters(), lr=self.lr)
 
-    def get_saxs_config(self):
-        """Return the configuration used to train the SAXS VAE."""
+    def on_save_checkpoint(self, checkpoint):
+        """Embed sub-VAEs' state dicts and configs in the pair checkpoint."""
+        checkpoint["vae_saxs_state_dict"] = self.vae_saxs.state_dict()
+        checkpoint["vae_les_state_dict"] = self.vae_les.state_dict()
+        checkpoint["vae_saxs_hparams"] = getattr(self.vae_saxs, "hparams", {})
+        checkpoint["vae_les_hparams"] = getattr(self.vae_les, "hparams", {})
 
-        return self._vae_saxs_config
+    def on_load_checkpoint(self, checkpoint):
+        """Reconstruct sub-VAEs from saved states when reloading the pair checkpoint."""
 
-    def check_models_compatible(self, raise_on_mismatch=True):
-        """Check if the SAXS and LES VAE architectures are compatible (ignoring weights).
+        vae_saxs_cfg = VAEModelConfig(**checkpoint["vae_saxs_hparams"]["model_config"])
+        vae_saxs_train_cfg = VAETrainingConfig(**checkpoint["vae_saxs_hparams"]["train_config"])
+        self.vae_saxs = PlVAE(model_config=vae_saxs_cfg, train_config=vae_saxs_train_cfg)
+        self.vae_saxs.load_state_dict(checkpoint["vae_saxs_state_dict"])
 
-        The check compares:
-        - actual submodel class (type)
-        - key architecture arguments from each PlVAE's config (if present):
-          input_dim, latent_dim, in_channels, down_channels, up_channels,
-          output_channels, strat
+        vae_les_cfg = VAEModelConfig(**checkpoint["vae_les_hparams"]["model_config"])
+        vae_les_train_cfg = VAETrainingConfig(**checkpoint["vae_les_hparams"]["train_config"])
+        self.vae_les = PlVAE(model_config=vae_les_cfg, train_config=vae_les_train_cfg)
+        self.vae_les.load_state_dict(checkpoint["vae_les_state_dict"])
 
-        Returns (bool, message). If raise_on_mismatch is True an AssertionError is raised on mismatch.
-        """
+
+    def check_models_compatible(self, raise_on_mismatch: bool = True) -> tuple[bool, str]:
+        """Ensure both submodels have identical architectural dimensions."""
         saxs_model = getattr(self.vae_saxs, "model", None)
         les_model = getattr(self.vae_les, "model", None)
         if saxs_model is None or les_model is None:
-            msg = "One of the loaded PlVAE instances has no 'model' attribute."
+            msg = "Missing submodel in one of the VAEs."
             if raise_on_mismatch:
                 raise AssertionError(msg)
             return False, msg
-
         if type(saxs_model) is not type(les_model):
             msg = f"Different model classes: {type(saxs_model).__name__} != {type(les_model).__name__}"
             if raise_on_mismatch:
                 raise AssertionError(msg)
             return False, msg
-
-        saxs_cfg = getattr(self.vae_saxs, "config", {}) or {}
-        les_cfg = getattr(self.vae_les, "config", {}) or {}
-        saxs_args = saxs_cfg.get("model", {}).get("args", {}) if isinstance(saxs_cfg, dict) else {}
-        les_args = les_cfg.get("model", {}).get("args", {}) if isinstance(les_cfg, dict) else {}
-
-        keys_to_check = [
-            "input_dim",
-            "latent_dim",
-            "in_channels",
-            "down_channels",
-            "up_channels",
-            "output_channels",
-            "strat",
-        ]
-
-        diffs = []
-        for k in keys_to_check:
-            v1 = saxs_args.get(k, getattr(saxs_model, k, None))
-            v2 = les_args.get(k, getattr(les_model, k, None))
-            if isinstance(v1, list):
-                v1_cmp = tuple(v1)
-            else:
-                v1_cmp = v1
-            if isinstance(v2, list):
-                v2_cmp = tuple(v2)
-            else:
-                v2_cmp = v2
-            if v1_cmp != v2_cmp:
-                diffs.append(f"{k}: {v1_cmp} != {v2_cmp}")
-
+        keys = ["latent_dim", "in_channels", "down_channels", "up_channels"]
+        diffs = [f"{k}: {getattr(saxs_model, k, None)} != {getattr(les_model, k, None)}"
+                 for k in keys if getattr(saxs_model, k, None) != getattr(les_model, k, None)]
         if diffs:
-            msg = "Model architecture mismatch: " + "; ".join(diffs)
+            msg = "Architecture mismatch: " + "; ".join(diffs)
             if raise_on_mismatch:
                 raise AssertionError(msg)
             return False, msg
+        return True, "Models are compatible."
 
-        return True, "Models are architecture-compatible (ignoring weights)."

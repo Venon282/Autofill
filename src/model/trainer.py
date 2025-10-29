@@ -13,7 +13,8 @@ from lightning.pytorch.loggers import MLFlowLogger
 from torch.utils.data import DataLoader, random_split
 from uniqpath import unique_path
 
-
+from model.pairvae.configs import PairVAEModelConfig, PairVAETrainingConfig
+from model.vae.configs import VAETrainingConfig, VAEModelConfig
 from src.dataset.datasetH5 import HDF5Dataset
 from src.dataset.datasetPairH5 import PairHDF5Dataset
 from src.dataset.transformations import Pipeline
@@ -111,80 +112,112 @@ class TrainPipeline:
         return log_path
 
     def _initialize_components(self):
-        """Instantiate model, dataset, and callbacks based on the configuration.
-
-        This function modifies self.config in place to add data transformations and q values for save in hyperparameters.
         """
-        model_type = self.cfg_model['type']
-        common_cfg = {
-            'num_samples': self.config['training'].get('num_samples', 10),
-            'every_n_epochs': self.config['training'].get('every_n_epochs', 10),
-            'artifact_file': 'val_plot.png'
+        Instantiate the model, dataset, and callbacks according to the current configuration.
+
+        Returns:
+            tuple:
+                model (pl.LightningModule): Lightning-wrapped model (PlVAE or PlPairVAE)
+                dataset (torch.utils.data.Dataset): Dataset object for training/validation
+                callbacks (list): List of Lightning callbacks
+        """
+
+        model_type = self.config["model"]["type"].lower()
+        training_cfg = self.config["training"]
+        dataset_cfg = self.config["dataset"]
+        output_dir = training_cfg.get("output_dir", "inference_results")
+        common_cb_args = {
+            "num_samples": training_cfg.get("num_samples", 10),
+            "every_n_epochs": training_cfg.get("every_n_epochs", 10),
+            "artifact_file": "val_plot.png",
         }
         callbacks = []
-        if model_type.lower() == 'pair_vae':
-            model = PlPairVAE(self.config)
-            transform_les = model.get_transforms_data_les()
-            transform_saxs = model.get_transforms_data_saxs()
-            # Determine whether to use data_q from dataset or not
-            use_data_q = not (model.have_data_q_les() and model.have_data_q_saxs())
-            dataset = PairHDF5Dataset(**self.config['dataset'],
-                                      transformer_q_saxs=Pipeline(transform_saxs["q"]),
-                                      transformer_y_saxs=Pipeline(transform_saxs["y"]),
-                                      transformer_q_les=Pipeline(transform_les["q"]),
-                                      transformer_y_les=Pipeline(transform_les["y"]),
-                                      use_data_q=use_data_q)
-            # Save the data_q used for training in the config for hyperparameter logging
-            self.cfg_model['data_q_saxs'] = dataset.get_data_q_saxs()
-            self.cfg_model['data_q_les'] = dataset.get_data_q_les()
+
+        # ----------------------- PairVAE ---------------------------------
+        if model_type == "pair_vae":
+            model_cfg = PairVAEModelConfig(**self.config["model"])
+            train_cfg = PairVAETrainingConfig(**training_cfg)
+            model = PlPairVAE(model_config=model_cfg, train_config=train_cfg)
+            transform_les = model.model.vae_les.get_transformer()
+            transform_saxs = model.model.vae_saxs.get_transformer()
+            use_data_q = not (getattr(model, "data_q_les", None) and getattr(model, "data_q_saxs", None))
+
+            dataset = PairHDF5Dataset(
+                **dataset_cfg,
+                transformer_q_saxs=Pipeline(transform_saxs["q"]),
+                transformer_y_saxs=Pipeline(transform_saxs["y"]),
+                transformer_q_les=Pipeline(transform_les["q"]),
+                transformer_y_les=Pipeline(transform_les["y"]),
+                use_data_q=use_data_q,
+            )
+
+            # Track q-values for reproducibility
+            model_cfg.data_q_saxs = dataset.get_data_q_saxs()
+            model_cfg.data_q_les = dataset.get_data_q_les()
 
             curves_config = {
-                'saxs': {'truth_key': 'data_y_saxs', 'pred_keys': ['recon_saxs', 'recon_les2saxs'], 'use_loglog': True},
-                'les': {'truth_key': 'data_y_les', 'pred_keys': ['recon_les', 'recon_saxs2les']}
+                "saxs": {"truth_key": "data_y_saxs", "pred_keys": ["recon_saxs", "recon_les2saxs"], "use_loglog": True},
+                "les": {"truth_key": "data_y_les", "pred_keys": ["recon_les", "recon_saxs2les"]},
             }
 
-        elif model_type.lower() == 'vae':
-            model = PlVAE(self.config)
-            transform_config = self.config.get('transforms_data', {})
-            assert 'q' in transform_config and 'y' in transform_config, "Missing 'q' or 'y' in transform config"
-            ds_cfg = dict(self.config['dataset'])
-            req_meta = list(ds_cfg.get('requested_metadata', []) or [])
-            for k in ['diameter_nm', 'concentration_original']:
-                if k not in req_meta:
-                    req_meta.append(k)
-            ds_cfg['requested_metadata'] = req_meta
-            dataset = HDF5Dataset(**ds_cfg,
-                                  transformer_q=Pipeline(transform_config["q"]),
-                                  transformer_y=Pipeline(transform_config["y"]))
-            # Save the data_q used for training in the config for hyperparameter logging
-            self.cfg_model['data_q'] = dataset.get_data_q()
+        # ----------------------- Single VAE ---------------------------------
+        elif model_type == "vae":
+            model_cfg = VAEModelConfig(**self.config["model"])
+            train_cfg = VAETrainingConfig(**training_cfg)
 
-            curves_config = {'recon': {'truth_key': 'data_y', 'pred_keys': ["recon"],
-                                       'use_loglog': self.config['training']['use_loglog']}}
-            callbacks.append(MAEMetricCallback())
+            transforms = self.config.get("transforms_data", {})
+            assert "q" in transforms and "y" in transforms, "Missing 'q' or 'y' in transform config."
+
+            ds_cfg = dict(dataset_cfg)
+            required_meta = set(ds_cfg.get("requested_metadata") or [])
+            required_meta.update({"diameter_nm", "concentration_original"})
+            ds_cfg["requested_metadata"] = sorted(required_meta)
+            dataset = HDF5Dataset(
+                **ds_cfg,
+                transformer_q=Pipeline(transforms["q"]),
+                transformer_y=Pipeline(transforms["y"]),
+            )
+            model_cfg.data_q = dataset.get_data_q()
+            model_cfg.transforms_data = dataset.transforms_to_dict()
+
+            model = PlVAE(model_config=model_cfg, 
+                          train_config=train_cfg)
+            curves_config = {
+                "recon": {
+                    "truth_key": "data_y",
+                    "pred_keys": ["recon"],
+                    "use_loglog": training_cfg.get("use_loglog", False),
+                }
+            }
+            from src.model.callbacks.metrics_callback import MAEMetricCallback
+            callbacks += [MAEMetricCallback()]
             try:
                 from src.model.callbacks.metrics_callback import SASFitMetricCallback
-                callbacks.append(SASFitMetricCallback())
+                callbacks += [SASFitMetricCallback()]
             except Exception:
                 pass
+
         else:
-            raise ValueError(f"Unknown model type: {model_type}. Expected 'pair' or 'vae'.")
+            raise ValueError(f"Unknown model type: {model_type}. Expected 'vae' or 'pair_vae'.")
 
-        inf_cb = InferencePlotCallback(
+        # ----------------------- Callbacks setup ---------------------------------
+        inf_val = InferencePlotCallback(
             curves_config=curves_config,
-            output_dir=self.config['training'].get('output_dir', 'inference_results'),
-            **common_cfg
+            output_dir=output_dir,
+            **common_cb_args,
         )
-        callbacks.append(inf_cb)
-        if self.config['training'].get('plot_train', False):
-            train_cfg = common_cfg.copy()
-            train_cfg['artifact_file'] = 'train_plot.png'
-            callbacks.insert(0, InferencePlotCallback(curves_config=curves_config,
-                                                      output_dir=str(self.log_path / "inference_results"),
-                                                      **train_cfg))
+        callbacks.append(inf_val)
 
-        self.config['transforms_data'] = dataset.transforms_to_dict()
-
+        if training_cfg.get("plot_train", False):
+            train_args = {**common_cb_args, "artifact_file": "train_plot.png"}
+            inf_train = InferencePlotCallback(
+                curves_config=curves_config,
+                output_dir=str(self.log_path / "inference_results"),
+                **train_args,
+            )
+            callbacks.insert(0, inf_train)
+        if hasattr(dataset, "transforms_to_dict"):
+            self.config["transforms_data"] = dataset.transforms_to_dict()
         return model, dataset, callbacks
 
     def _create_data_loaders(self):
