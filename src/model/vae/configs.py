@@ -18,3 +18,4 @@ class VAETrainingConfig(BaseModel):
     num_epochs: int = Field(default=100, ge=1)
     weighted_loss: bool = False
     weighted_loss_limit_index: Optional[int] = None
+    eta_min: float = 1e-15

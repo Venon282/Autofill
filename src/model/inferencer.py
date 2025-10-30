@@ -105,14 +105,7 @@ class BaseInferencer(abc.ABC):
                 value = inverse.get(value, value)
             converted_metadata[key] = value
 
-        try:
-            if self.format == 'h5':
-                name = str(batch['csv_index'][index].item())
-            else:
-                path = batch['path'][index]
-                name = os.path.splitext(os.path.basename(path))[0]
-        except KeyError:
-            name = f"sample_{index}"
+        name = f"sample_{index}"
 
         prediction_dir = os.path.join(self.output_dir, f"prediction_{name}")
         os.makedirs(prediction_dir, exist_ok=True)

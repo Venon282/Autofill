@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-from model.vae.configs import VAEModelConfig, VAETrainingConfig
+from src.model.vae.configs import VAEModelConfig, VAETrainingConfig
 from src.logging_utils import get_logger
 from src.model.vae.submodel.registry import *
 
@@ -151,7 +151,7 @@ class PlVAE(pl.LightningModule):
             threshold=1e-3,
             factor=0.1,
             patience=10,
-            min_lr=self.config["training"]["eta_min"],
+            min_lr=self.train_cfg.eta_min,
         )
         return {
             "optimizer": optimizer,

@@ -8,8 +8,8 @@ import torch
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import LambdaLR
 
-from model.pairvae.configs import PairVAEModelConfig, PairVAETrainingConfig
-from model.vae.configs import VAEModelConfig, VAETrainingConfig
+from src.model.pairvae.configs import PairVAEModelConfig, PairVAETrainingConfig
+from src.model.vae.configs import VAEModelConfig, VAETrainingConfig
 from src.logging_utils import get_logger
 from src.model.pairvae.loss import BarlowTwinsLoss
 from src.model.pairvae.pairvae import PairVAE
@@ -112,11 +112,11 @@ class PlPairVAE(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
             self.model.parameters(),
-            lr=self.config["training"]["max_lr"]
+            lr=self.train_cfg.max_lr
         )
 
-        warmup_epochs = self.config["training"].get("warmup_epochs", 5)
-        max_epochs = self.config["training"]["num_epochs"]
+        warmup_epochs = self.train_cfg.warmup_epochs
+        max_epochs = self.train_cfg.num_epochs
 
         # --- 1️⃣ Warmup scheduler ---
         def lr_lambda(current_epoch):
@@ -136,7 +136,7 @@ class PlPairVAE(pl.LightningModule):
             threshold=1e-3,
             factor=0.1,
             patience=10,
-            min_lr=self.config["training"]["eta_min"]
+            min_lr=self.train_cfg.eta_min
         )
 
         # --- 3️⃣ Combine them ---

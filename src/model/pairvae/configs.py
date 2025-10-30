@@ -22,4 +22,5 @@ class PairVAETrainingConfig(BaseModel):
     weighted_loss_limit_index: Optional[int] = None
     max_lr: float = 1e-3
     num_epochs: int = 100
-    warmup_epochs: int = 5
+    warmup_epochs: int = 5    
+    eta_min: float = 1e-15

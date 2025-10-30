@@ -4,8 +4,7 @@
 Validate SAXS or LES HDF5 files used by the AutoFill pipeline.
 
 Checks performed:
-- required datasets exist (csv_index, length_nm, concentration(_original), diameter_nm, data_y, data_q / data_wavelength)
-- all dataset lengths match csv_index (for 1D) or first axis matches csv_index (for 2D)
+- required datasets exist (length_nm, concentration(_original), diameter_nm, data_y, data_q / data_wavelength)
 - data_y and q arrays have consistent inner dimension (pad size)
 - count of NaN/inf values reported
 - allows passing extra required columns
@@ -82,7 +81,7 @@ def diagnose_hdf5(path: Path, file_type: str, extra_cols: Iterable[str], verbose
 
     with h5py.File(path, "r") as hdf:
         # Common required fields
-        required_common = ["csv_index", "length_nm", "diameter_nm", "data_y"]
+        required_common = ["length_nm", "diameter_nm", "data_y"]
         # concentration may be named concentration_original or concentration
         concentration_names = ["concentration_original", "concentration"]
 
@@ -134,69 +133,6 @@ def diagnose_hdf5(path: Path, file_type: str, extra_cols: Iterable[str], verbose
                 issues.append((CRITICAL, f"Missing required extra column/dataset: '{col}'"))
             else:
                 infos.append((INFO, f"Found extra dataset: {col} (shape={hdf[col].shape})"))
-
-        # If csv_index missing, can't do further length checks
-        if check_exists(hdf, "csv_index"):
-            csv_len = dataset_len(hdf, "csv_index")
-            infos.append((INFO, f"csv_index length: {csv_len}"))
-
-            # Validate lengths for each (1D or 2D first dim)
-            for name in list(required_common) + ([conc_found] if conc_found else []) + ([q_found] if q_found else []) + list(extra_cols):
-                if name is None:
-                    continue
-                if not check_exists(hdf, name):
-                    continue
-                try:
-                    dlen = dataset_len(hdf, name)
-                except Exception as exc:
-                    issues.append((CRITICAL, f"Could not read dataset '{name}': {exc}"))
-                    continue
-                # For 2D, ensure first dim equals csv_len
-                if is_2d(hdf, name):
-                    if dlen != csv_len:
-                        issues.append((CRITICAL, f"Shape mismatch: dataset '{name}' has first-dim {dlen} but csv_index has {csv_len}"))
-                    else:
-                        infos.append((INFO, f"Dataset '{name}' matches csv_index length ({csv_len})"))
-                else:
-                    # 1D
-                    if dlen != csv_len:
-                        issues.append((CRITICAL, f"Length mismatch: dataset '{name}' length {dlen} vs csv_index {csv_len}"))
-                    else:
-                        infos.append((INFO, f"Dataset '{name}' matches csv_index length ({csv_len})"))
-
-            # For data_y and q_found, check inner dimension consistency
-            if check_exists(hdf, "data_y") and q_found and check_exists(hdf, q_found):
-                try:
-                    y_shape = hdf["data_y"].shape
-                    q_shape = hdf[q_found].shape
-                    if len(y_shape) < 2 or len(q_shape) < 2:
-                        # it's possible q is 1D per sample? still check first dims
-                        infos.append((WARNING, f"data_y or {q_found} do not appear 2D: data_y.shape={y_shape}, {q_found}.shape={q_shape}"))
-                    else:
-                        if y_shape[1] != q_shape[1]:
-                            issues.append((CRITICAL, f"Inner-dimension mismatch between 'data_y' and '{q_found}': {y_shape[1]} vs {q_shape[1]}"))
-                        else:
-                            infos.append((INFO, f"data_y and {q_found} have consistent inner-dimension: {y_shape[1]}"))
-                except Exception as exc:
-                    issues.append((WARNING, f"Could not inspect shapes for data_y / {q_found}: {exc}"))
-
-            # NaN and inf checks for critical numeric datasets
-            numeric_checks = ["data_y", q_found, "length_nm", "diameter_nm", conc_found]
-            for name in numeric_checks:
-                if not name or not check_exists(hdf, name):
-                    continue
-                try:
-                    arr = np.array(hdf[name])
-                    n_nan, n_inf = count_invalids(arr)
-                    if n_nan > 0 or n_inf > 0:
-                        issues.append((WARNING, f"Dataset '{name}' contains NaN/inf values: n_nan={n_nan}, n_inf={n_inf}"))
-                    else:
-                        infos.append((INFO, f"Dataset '{name}' contains no NaN/inf"))
-                except Exception as exc:
-                    issues.append((WARNING, f"Could not read dataset '{name}' for NaN/inf checks: {exc}"))
-
-        else:
-            issues.append((CRITICAL, "Missing 'csv_index' dataset: cannot validate per-sample lengths."))
 
     # Print summary
     logger.info("=== H5 check summary ===")

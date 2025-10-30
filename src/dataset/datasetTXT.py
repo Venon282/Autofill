@@ -73,7 +73,7 @@ class TXTDataset(Dataset):
             "data_y_min": data_y_min,
             "data_y_max": data_y_max,
             "metadata": metadata,
-            "csv_index": idx,
+            "data_index": idx,
             "path": str(file_path)
         }
 

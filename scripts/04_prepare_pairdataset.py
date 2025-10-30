@@ -86,7 +86,6 @@ class PairTextToHDF5Converter:
         hdf.create_dataset("data_q_les", (1, self.pad_size), maxshape=(None, self.pad_size), dtype=np.float64)
         hdf.create_dataset("data_y_les", (1, self.pad_size), maxshape=(None, self.pad_size), dtype=np.float64)
         hdf.create_dataset("len", (1,), maxshape=(None,))
-        hdf.create_dataset("csv_index", (1,), maxshape=(None,))
         for col in self.metadata_cols:
             hdf.create_dataset(col, (1,), maxshape=(None,), dtype=np.float64)
         return hdf
@@ -105,8 +104,6 @@ class PairTextToHDF5Converter:
         self.hdf_file["data_y_les"][current_index : current_index + current_size, :] = self.hdf_data[3][:current_size, :]
         self.hdf_file["len"].resize((current_index + current_size,))
         self.hdf_file["len"][current_index : current_index + current_size] = self.hdf_data[4][:current_size]
-        self.hdf_file["csv_index"].resize((current_index + current_size,))
-        self.hdf_file["csv_index"][current_index : current_index + current_size] = self.hdf_data[5][:current_size]
         for col in self.metadata_cols:
             self.hdf_file[col].resize((current_index + current_size,))
             self.hdf_file[col][current_index : current_index + current_size] = self.hdf_data[6][col][:current_size]
@@ -304,19 +301,19 @@ class PairingHDF5Converter:
         Returns:
             tuple: (dict_meta, dict_y, dict_q)
         """
-        csv_index = hdf_obj["csv_index"][:]
         length_nm = hdf_obj["length_nm"][:]
+        data_index = [i for i in range(len(length_nm))]
         diameter_nm = hdf_obj["diameter_nm"][:]
         concentration = self._get_concentration(hdf_obj)
         q_values = self._get_q_values(hdf_obj)
 
         dict_meta = {
             int(idx): (float(length), float(conc), float(diameter))
-            for idx, length, conc, diameter in zip(csv_index, length_nm, concentration, diameter_nm)
+            for idx, length, conc, diameter in zip(data_index, length_nm, concentration, diameter_nm)
         }
 
-        dict_y = {int(idx): y for idx, y in zip(csv_index, hdf_obj["data_y"][:])}
-        dict_q = {int(idx): q for idx, q in zip(csv_index, q_values)}
+        dict_y = {int(idx): y for idx, y in zip(data_index, hdf_obj["data_y"][:])}
+        dict_q = {int(idx): q for idx, q in zip(data_index, q_values)}
 
         return dict_meta, dict_y, dict_q
 
@@ -346,24 +343,23 @@ class PairingHDF5Converter:
                 pair_index += 1
             else:
                 unpaired_saxs.append(saxs_idx)
-
         for les_idx, les_values in dict_les.items():
             if les_values not in inverse_saxs:
                 unpaired_les.append(les_idx)
-
         if unpaired_saxs or unpaired_les:
             logger.warning(
                 "Some entries could not be paired between SAXS and LES datasets."
             )
 
-        random.shuffle(pairs)
-        n_val = int(self.split_val_ratio * len(pairs))
-        n_test = int(self.split_test_ratio * len(pairs))
-        n_train = len(pairs) - n_val - n_test
+        shuffled_pairs = pairs.copy()
+        random.shuffle(shuffled_pairs)
+        n_val = int(self.split_val_ratio * len(shuffled_pairs))
+        n_test = int(self.split_test_ratio * len(shuffled_pairs))
+        n_train = len(shuffled_pairs) - n_val - n_test
 
-        train_pairs = pairs[:n_train]
-        val_pairs = pairs[n_train:n_train + n_val]
-        test_pairs = pairs[n_train + n_val:]
+        train_pairs = shuffled_pairs[:n_train]
+        val_pairs = shuffled_pairs[n_train:n_train + n_val]
+        test_pairs = shuffled_pairs[n_train + n_val:]
 
         logger.info("Training pairs: %d", len(train_pairs))
         logger.info("Validation pairs: %d", len(val_pairs))
@@ -392,7 +388,6 @@ class PairingHDF5Converter:
             q_saxs.append(dict_saxs_q[saxs_idx])
             y_les.append(dict_les_y[les_idx])
             q_les.append(dict_les_q[les_idx])
-            idx_pairs.append(pair_idx)
             idx_saxs.append(saxs_idx)
             idx_les.append(les_idx)
 
@@ -401,9 +396,8 @@ class PairingHDF5Converter:
             "data_q_saxs": np.vstack(q_saxs).astype(float),
             "data_y_les": np.vstack(y_les).astype(float),
             "data_q_les": np.vstack(q_les).astype(float),
-            "csv_index": np.array(idx_pairs),
-            "csv_index_saxs": np.array(idx_saxs),
-            "csv_index_les": np.array(idx_les),
+            "data_index_saxs": np.array(idx_saxs),
+            "data_index_les": np.array(idx_les),
         }
 
         output_path = os.path.join(self.output_dir, self.output_filename)

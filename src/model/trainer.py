@@ -13,8 +13,8 @@ from lightning.pytorch.loggers import MLFlowLogger
 from torch.utils.data import DataLoader, random_split
 from uniqpath import unique_path
 
-from model.pairvae.configs import PairVAEModelConfig, PairVAETrainingConfig
-from model.vae.configs import VAETrainingConfig, VAEModelConfig
+from src.model.pairvae.configs import PairVAEModelConfig, PairVAETrainingConfig
+from src.model.vae.configs import VAETrainingConfig, VAEModelConfig
 from src.dataset.datasetH5 import HDF5Dataset
 from src.dataset.datasetPairH5 import PairHDF5Dataset
 from src.dataset.transformations import Pipeline

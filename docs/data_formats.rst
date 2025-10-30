@@ -30,7 +30,6 @@ simple so that it can be explored with tools such as ``h5ls`` or ``h5py``.
    ├── data_q          [N × pad_size] float64
    ├── data_y          [N × pad_size] float64
    ├── len             [N] int64
-   ├── csv_index       [N] int64
    └── <metadata_cols> [N] float64 or int64
 
 **Dataset descriptions:**
@@ -49,11 +48,6 @@ simple so that it can be explored with tools such as ``h5ls`` or ``h5py``.
     One-dimensional dataset ``[N]`` storing the original length of each time
     series before padding or truncation. This allows you to identify the
     actual data points vs. padding.
-
-``csv_index``
-    One-dimensional dataset ``[N]`` linking each sample back to its row in
-    the metadata CSV. Use this index to cross-reference sample properties
-    with the original CSV file.
 
 ``<metadata columns>``
     For every non-excluded column from the CSV, a dataset of shape ``[N]``
@@ -110,7 +104,6 @@ You will have two options:
    ├── data_y_mod2     [N × pad_size] float64
    ├── len_mod1        [N] int64
    ├── len_mod2        [N] int64
-   ├── csv_index       [N] int64
    └── <metadata_cols> [N] float64 or int64
 
 **Dataset descriptions:**
@@ -127,7 +120,7 @@ but duplicates the data arrays for each modality:
 ``len_mod1``, ``len_mod2``
     Original lengths before padding for each modality
 
-The remaining datasets (``csv_index`` and metadata columns) work identically
+The remaining datasets (metadata columns) work identically
 to the single-modality case.
 
 .. _json-metadata-dict:

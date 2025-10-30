@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from lightning.pytorch import LightningModule
 
-from model.vae.configs import VAETrainingConfig, VAEModelConfig
+from src.model.vae.configs import VAETrainingConfig, VAEModelConfig
 from src.model.vae.pl_vae import PlVAE
 
 

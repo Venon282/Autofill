@@ -66,6 +66,8 @@ class HDF5Dataset(Dataset):
 
         # --- Load intensity data ---
         self.data_y = self.hdf['data_y']
+        self.data_index = [i for i in range(len(self.data_y))]
+
         assert len(self.data_y) > 0 or (self.data_q is not None and len(self.data_q) > 0), (
             "H5 file is empty. Check your metadata filters and make sure they are not too restrictive."
         )
@@ -73,7 +75,6 @@ class HDF5Dataset(Dataset):
         self.transformer_q = _ensure_pipeline(transformer_q)
         self.transformer_y = _ensure_pipeline(transformer_y)
 
-        self.csv_index = self.hdf.get('csv_index', None)
         if "len" in self.hdf.keys():
             self.len = self.hdf["len"][()]
         else:
@@ -210,10 +211,8 @@ class HDF5Dataset(Dataset):
             "data_y_untransformed": torch.as_tensor(data_y, dtype=torch.float32).unsqueeze(0),
             "metadata": metadata,
             "len": self.len[original_idx],
+            "data_index": self.data_index[original_idx]
         }
-
-        if self.csv_index is not None:
-            batch["csv_index"] = self.csv_index[original_idx]
 
         if data_q is not None:
             batch["data_q"] = data_q
