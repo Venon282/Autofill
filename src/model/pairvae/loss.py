@@ -6,45 +6,30 @@ import torch.nn as nn
 from src.logging_utils import get_logger
 logger = get_logger(__name__)
 
-class BarlowTwinsLoss(nn.Module):
-    """Implementation of the Barlow Twins loss for latent alignment."""
 
-    def __init__(self, lambda_coeff: float = 5e-3) -> None:
+class BarlowTwinsLoss(nn.Module):
+    def __init__(self, batch_size, lambda_coeff=5e-3, z_dim=128):
         super().__init__()
+
+        self.z_dim = z_dim
+        self.batch_size = batch_size
         self.lambda_coeff = lambda_coeff
 
-    @staticmethod
-    def off_diagonal_elements(matrix: torch.Tensor) -> torch.Tensor:
-        """Return a flattened view of the off-diagonal elements of ``matrix``."""
+    def off_diagonal_ele(self, x):
+        # taken from: https://github.com/facebookresearch/barlowtwins/blob/main/main.py
+        # return a flattened view of the off-diagonal elements of a square matrix
+        n, m = x.shape
+        assert n == m
+        return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
 
-        rows, cols = matrix.shape
-        if rows != cols:
-            raise ValueError("Input must be a square matrix")
-        return matrix.flatten()[:-1].view(rows - 1, rows + 1)[:, 1:].flatten()
+    def forward(self, z1, z2):
+        z1_norm = (z1 - torch.mean(z1, dim=0)) / torch.std(z1, dim=0)
+        z2_norm = (z2 - torch.mean(z2, dim=0)) / torch.std(z2, dim=0)
 
-    class BarlowTwinsLoss(nn.Module):
-        def __init__(self, batch_size, lambda_coeff=5e-3, z_dim=128):
-            super().__init__()
+        cross_corr = torch.matmul(z1_norm.T, z2_norm) / self.batch_size
 
-            self.z_dim = z_dim
-            self.batch_size = batch_size
-            self.lambda_coeff = lambda_coeff
+        on_diag = torch.diagonal(cross_corr).add_(-1).pow_(2).sum()
+        off_diag = self.off_diagonal_ele(cross_corr).pow_(2).sum()
 
-        def off_diagonal_ele(self, x):
-            # taken from: https://github.com/facebookresearch/barlowtwins/blob/main/main.py
-            # return a flattened view of the off-diagonal elements of a square matrix
-            n, m = x.shape
-            assert n == m
-            return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
-
-        def forward(self, z1, z2):
-            z1_norm = (z1 - torch.mean(z1, dim=0)) / torch.std(z1, dim=0)
-            z2_norm = (z2 - torch.mean(z2, dim=0)) / torch.std(z2, dim=0)
-
-            cross_corr = torch.matmul(z1_norm.T, z2_norm) / self.batch_size
-
-            on_diag = torch.diagonal(cross_corr).add_(-1).pow_(2).sum()
-            off_diag = self.off_diagonal_ele(cross_corr).pow_(2).sum()
-
-            return on_diag + self.lambda_coeff * off_diag
+        return on_diag + self.lambda_coeff * off_diag
 

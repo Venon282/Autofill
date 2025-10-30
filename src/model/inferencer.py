@@ -7,6 +7,7 @@ import json
 import os
 from typing import Dict, Optional
 
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -58,7 +59,7 @@ class BaseInferencer(abc.ABC):
         self.batch_size = batch_size
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
-        self.config = hparams
+        self.config = hparams['global_config']
         self.model = self.load_model(checkpoint_path)
         self.model.to(self.device).eval()
         if conversion_dict_path is None:
@@ -70,7 +71,7 @@ class BaseInferencer(abc.ABC):
         self.data_dir = data_dir
         self.sample_frac = sample_frac
         self.save_plot = save_plot
-        self.use_loglog = self.model.model_config.use_loglog or False
+        self.use_loglog = self.model.train_cfg.use_loglog or False
         self.dataset = None
         self.invert = lambda y, q: (y, q)
         self.format = ''
@@ -145,7 +146,7 @@ class VAEInferencer(BaseInferencer):
         return PlVAE.load_from_checkpoint(checkpoint_path=path)
 
     def get_input_dim(self) -> int:
-        return self.model.model_config.args.input_dim
+        return self.model.get_input_dim()
 
     def infer_and_save(self) -> None:
         loader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
@@ -155,13 +156,13 @@ class VAEInferencer(BaseInferencer):
                 outputs = self.model(batch)
                 y_pred = outputs["recon"]
                 q_pred = outputs['data_q']
-                y_pred, q_pred = self.invert(y_pred, q_pred)
+                y_pred, q_pred = self.invert(y_pred.cpu().numpy(), q_pred.cpu().numpy())
                 metadata_batch = batch["metadata"]
                 for i in range(len(y_pred)):
-                    y_arr = y_pred[i].detach().cpu().numpy().flatten()
-                    q_arr = q_pred[i].detach().cpu().numpy().flatten()
+                    y_arr = y_pred[i]
+                    q_arr = q_pred[i]
                     metadata = {k: metadata_batch[k][i] for k in metadata_batch}
-                    technique = self.config["dataset"]["metadata_filters"].get("technique", ["signal"])
+                    technique = self.model.model_cfg.spec
                     if isinstance(technique, str):
                         technique = [technique]
                     signal_name = "_".join(technique)
