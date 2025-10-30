@@ -108,10 +108,21 @@ class ResVAE(nn.Module):
             layers.append(nn.Sigmoid())
 
         self.decoder = nn.Sequential(*layers)
-        # self.display_info()
+        self.display_info()
 
     def display_info(self):
-        logger.info("RESEAU VAE")
+        test_tensor = torch.zeros(1, self.in_channels, self.input_dim)
+        flattened_size = self.encoder(test_tensor).view(1, -1).size(1)
+        logger.info("VAE Architecture:")
+        logger.info("\tInput Dimension: %s", self.input_dim)
+        logger.info("\tLatent Dimension: %s", self.latent_dim)
+        logger.info("\tIn Channels: %s", self.in_channels)
+        logger.info("\tDown Channels: %s", self.down_channels)
+        logger.info("\tUp Channels: %s", self.up_channels)
+        logger.info("\tOutput Channels: %s", self.output_channels)
+        logger.info("\tFlattened Size: %s", flattened_size)
+        logger.info("\tEncoder Architecture: %s", self.encoder)
+        logger.info("\tDecoder Architecture: %s", self.decoder)
 
     # ---- ENCODER ----
     def encode(self, x):

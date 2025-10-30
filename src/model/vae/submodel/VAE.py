@@ -74,7 +74,7 @@ class VAE(nn.Module):
                 padding=1) )
 
     def display_info(self):
-        logger.info("RESEAU VAE")
+        logger.info("RESEAU Vanilla VAE")
 
     # ---- ENCODER ----
     def encode(self, x):

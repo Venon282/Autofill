@@ -345,7 +345,8 @@ class TrainPipeline:
             max_epochs=self.config['training']['num_epochs'],
             log_every_n_steps=10,
             callbacks=self.all_callbacks,
-            logger=self.logger
+            logger=self.logger,
+            enable_progress_bar=False,
         )
 
     def _setup_log_directory(self) -> str:
@@ -395,14 +396,3 @@ class TrainPipeline:
             logger.info("Testing completed")
         return self.log_path
 
-
-if __name__ == '__main__':
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str, required=True)
-    args = parser.parse_args()
-    with open(args.config, 'r') as f:
-        configuration = yaml.safe_load(f)
-    pipeline = TrainPipeline(configuration)
-    pipeline.train()
