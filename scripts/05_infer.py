@@ -63,7 +63,7 @@ def main() -> None:
     args = parse_args()
     checkpoint_path = args.checkpoint
 
-    hparams = torch.load(checkpoint_path, map_location="cpu", weights_only=False)["hyper_parameters"]["config"]
+    hparams = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     try:
         model_type = hparams["model_config"]["type"]
     except KeyError:
@@ -87,7 +87,7 @@ def main() -> None:
             data_path=args.data_path,
             conversion_dict_path=args.conversion_dict,
             sample_frac=args.sample_frac,
-            hparams=hparams["global_config"],
+            hparams=hparams,
             batch_size=args.batch_size,
             data_dir=args.data_dir,
         )
@@ -100,7 +100,7 @@ def main() -> None:
             data_path=args.data_path,
             conversion_dict_path=args.conversion_dict,
             sample_frac=args.sample_frac,
-            hparams=hparams["global_config"],
+            hparams=hparams,
             batch_size=args.batch_size,
             data_dir=args.data_dir,
         )
