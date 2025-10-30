@@ -3,6 +3,8 @@ from typing import Optional
 
 
 class PairVAEModelConfig(BaseModel):
+    type: str = Field(..., description="Type of model.")
+    spec: str = Field("pair", description="Specification of the VAE model.")
     ckpt_path_saxs: Optional[str] = Field(None, description="Checkpoint path for pretrained SAXS VAE")
     ckpt_path_les: Optional[str] = Field(None, description="Checkpoint path for pretrained LES VAE")
     lr: float = Field(1e-4, ge=0)

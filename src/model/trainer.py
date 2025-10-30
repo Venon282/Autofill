@@ -70,6 +70,7 @@ class TrainPipeline:
         if self.verbose:
             logger.info("Preparing log directory")
         self.log_directory = self._setup_log_directory()
+        self.model.set_global_config(self.config)
 
     def _set_defaults(self, config):
         """Validate the configuration and set sensible defaults."""
@@ -329,7 +330,7 @@ class TrainPipeline:
             self.logger = TensorBoardLogger(
                 save_dir=str(self.log_path.parent / "tensorboard_logs"),
                 name=str(self.log_path.name),
-                version=self.config['run_name']
+                # version=self.config['run_name']
             )
 
         self.logger.log_hyperparams(self.config)

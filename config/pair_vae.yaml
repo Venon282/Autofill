@@ -1,7 +1,5 @@
 experiment_name: PAIR_VAE
 run_name: pairvae
-
-mlflow_uri: 
 dataset:
   conversion_dict: 
   hdf5_file: "DATA/pair_all_data.hdf5"
@@ -12,7 +10,7 @@ dataset:
 training:
   output_dir: "runs/"
   num_gpus: 1
-  num_epochs: 300
+  num_epochs: 1
   warmup_epochs: 5
   patience: 20
   use_loglog: false
@@ -40,10 +38,8 @@ training:
 
 model:
   type: pair_vae
-  VAE_LES:
-    path_checkpoint: runs/AUTOFILL_LES/les_cylinder_ag/best.ckpt
-  VAE_SAXS:
-    path_checkpoint: runs/AUTOFILL_SAXS/saxs_cylinder_ag/best.ckpt
+  ckpt_path_les: DATA/best_saxs.ckpt
+  ckpt_path_saxs: DATA/best_saxs.ckpt
 
 param_grid:
   training.weight_latent_similarity: [0.005, 0.001]

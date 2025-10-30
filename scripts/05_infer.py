@@ -64,7 +64,10 @@ def main() -> None:
     checkpoint_path = args.checkpoint
 
     hparams = torch.load(checkpoint_path, map_location="cpu", weights_only=False)["hyper_parameters"]["config"]
-    model_type = hparams["model"]["type"]
+    try:
+        model_type = hparams["model_config"]["type"]
+    except KeyError:
+        model_type = "vae"
 
     if model_type.lower() not in ["vae", "pair_vae"]:
         raise ValueError(f"Model type {model_type} is not supported for inference.")
@@ -84,7 +87,7 @@ def main() -> None:
             data_path=args.data_path,
             conversion_dict_path=args.conversion_dict,
             sample_frac=args.sample_frac,
-            hparams=hparams,
+            hparams=hparams["global_config"],
             batch_size=args.batch_size,
             data_dir=args.data_dir,
         )
@@ -97,7 +100,7 @@ def main() -> None:
             data_path=args.data_path,
             conversion_dict_path=args.conversion_dict,
             sample_frac=args.sample_frac,
-            hparams=hparams,
+            hparams=hparams["global_config"],
             batch_size=args.batch_size,
             data_dir=args.data_dir,
         )

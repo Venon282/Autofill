@@ -1,11 +1,13 @@
 """Wrapper combining two pretrained single-domain VAEs into a paired objective."""
 
 import torch
-import torch.nn as nn
 from lightning.pytorch import LightningModule
 
-from src.model.vae.configs import VAETrainingConfig, VAEModelConfig
+from logging_utils import get_logger
+from model.vae.configs import VAETrainingConfig, VAEModelConfig
 from src.model.vae.pl_vae import PlVAE
+
+logger = get_logger(__name__)
 
 
 class PairVAE(LightningModule):
@@ -33,11 +35,15 @@ class PairVAE(LightningModule):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         if vae_saxs is None:
-            assert ckpt_path_saxs, "Either a PlVAE instance or a checkpoint path must be provided for SAXS."
+            assert ckpt_path_saxs, ("Either a PlVAE instance or a checkpoint path must be provided for SAXS."
+                                    "Check `ckpt_path_saxs` argument in config.")
             vae_saxs = PlVAE.load_from_checkpoint(ckpt_path_saxs).to(device)
+            logger.info(f"Loaded SAXS VAE from checkpoint: {ckpt_path_saxs}")
         if vae_les is None:
-            assert ckpt_path_les, "Either a PlVAE instance or a checkpoint path must be provided for LES."
+            assert ckpt_path_les, ("Either a PlVAE instance or a checkpoint path must be provided for LES."
+                                    "Check `ckpt_path_les` argument in config.")
             vae_les = PlVAE.load_from_checkpoint(ckpt_path_les).to(device)
+            logger.info(f"Loaded LES VAE from checkpoint: {ckpt_path_les}")
 
         self.vae_saxs = vae_saxs
         self.vae_les = vae_les

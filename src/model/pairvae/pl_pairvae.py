@@ -227,6 +227,7 @@ class PlPairVAE(pl.LightningModule):
 
         self.model.vae_saxs = _restore_vae(checkpoint["vae_saxs"])
         self.model.vae_les = _restore_vae(checkpoint["vae_les"])
+        self.set_global_config(checkpoint['global_config'])
 
         self.load_state_dict(checkpoint["state_dict"])
 
@@ -237,6 +238,7 @@ class PlPairVAE(pl.LightningModule):
         checkpoint["pairvae_model_config"] = self.model_cfg.model_dump()
         checkpoint["pairvae_train_config"] = self.train_cfg.model_dump()
         checkpoint["state_dict"] = self.state_dict()
+        checkpoint["global_config"] = self.global_config
 
         def _extract_vae_info(vae):
             return {
@@ -249,3 +251,9 @@ class PlPairVAE(pl.LightningModule):
 
         checkpoint["vae_saxs"] = _extract_vae_info(self.model.vae_saxs)
         checkpoint["vae_les"] = _extract_vae_info(self.model.vae_les)
+
+    def set_global_config(self, global_config):
+        """Set global configuration for the model and submodules."""
+        self.global_config = global_config
+        if hasattr(self.model, 'set_global_config'):
+            self.model.set_global_config(global_config)

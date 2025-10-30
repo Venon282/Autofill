@@ -140,7 +140,7 @@ class InferencePlotCallback(pl.Callback):
                 exp.add_figure("figure", fig)
             else:
                 logger.warning("Logger does not support figure logging.")
-        elif self.output_dir:
+        if self.output_dir:
             os.makedirs(self.output_dir, exist_ok=True)
             plot_path = os.path.join(self.output_dir, artifact_file)
             plt.savefig(plot_path)

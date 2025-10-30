@@ -193,6 +193,7 @@ class PlVAE(pl.LightningModule):
         checkpoint["model_config"] = self.model_cfg.model_dump()
         checkpoint["train_config"] = self.train_cfg.model_dump()
         checkpoint["state_dict"] = self.state_dict()
+        checkpoint["global_config"] = self.global_config
 
     def on_load_checkpoint(self, checkpoint):
         """Rebuild model and configuration from saved checkpoint."""
@@ -210,9 +211,16 @@ class PlVAE(pl.LightningModule):
         self.model_cfg = model_cfg
         self.train_cfg = train_cfg
         self.beta = model_cfg.beta
+        self.set_global_config(checkpoint['global_config'])
 
         self.data_q = torch.tensor(model_cfg.data_q, dtype=torch.float32)
         self.transforms_data = model_cfg.transforms_data
 
         self.load_state_dict(checkpoint["state_dict"])
+
+    def set_global_config(self, global_config):
+        """Set global configuration for the model and submodules."""
+        self.global_config = global_config
+        if hasattr(self.model, 'set_global_config'):
+            self.model.set_global_config(global_config)
 

@@ -4,6 +4,8 @@ from typing import Any, Dict, Optional
 
 class VAEModelConfig(BaseModel):
     """Model configuration for a single-domain VAE."""
+    type: str = Field(..., description="Type of model.")
+    spec: str = Field(..., description="Specification of the VAE model 'saxs' or 'les'.")
     vae_class: str = Field(..., description="Registered VAE architecture name in MODEL_REGISTRY.")
     args: Dict[str, Any] = Field(default_factory=dict, description="Arguments passed to the submodel constructor.")
     beta: float = Field(default=1e-6, ge=0.0, description="KL divergence scaling coefficient.")

@@ -377,19 +377,21 @@ After training, you'll find the following structure:
 
 .. code-block:: none
 
-   {output_dir}/{run_name}/
+   {output_dir}/{experiment_name}/{run_name}/
    ├── best.ckpt                    # Best model checkpoint
    ├── config_model.yaml           # Complete configuration used
    ├── train_indices.npy           # Training data indices
    ├── val_indices.npy             # Validation data indices
-   ├── lightning_logs/              # Lightning logs (if using TensorBoard)
-   │   └── version_0/
-   │       ├── events.out.tfevents.* # TensorBoard events
-   │       ├── hparams.yaml         # Hyperparameters
-   │       └── checkpoints/         # Epoch checkpoints
    └── inference_results/           # Generated plots
        ├── val_plot.png            # Validation plots
        └── train_plot.png          # Training plots (if enabled)
+
+{output_dir}/{experiment_name}/
+    └── tensorboard_logs/
+        └── {run_name}
+            ├── hparams.yaml
+            └── events.out.tfevents.XXXXX
+
 
 **Model checkpoints**
 

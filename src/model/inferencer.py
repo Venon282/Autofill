@@ -70,7 +70,7 @@ class BaseInferencer(abc.ABC):
         self.data_dir = data_dir
         self.sample_frac = sample_frac
         self.save_plot = save_plot
-        self.use_loglog = self.config["training"].get("use_loglog", False)
+        self.use_loglog = self.model.model_config.use_loglog or False
         self.dataset = None
         self.invert = lambda y, q: (y, q)
         self.format = ''
@@ -152,7 +152,7 @@ class VAEInferencer(BaseInferencer):
         return PlVAE.load_from_checkpoint(checkpoint_path=path)
 
     def get_input_dim(self) -> int:
-        return self.config["model"]["args"]["input_dim"]
+        return self.model.model_config.args.input_dim
 
     def infer_and_save(self) -> None:
         loader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
@@ -176,15 +176,15 @@ class VAEInferencer(BaseInferencer):
                     self.save_pred(batch, i, q_arr, y_arrs, metadata)
 
     def compute_dataset(self, input_dim: Optional[int]) -> None:
-        transforms_q = Pipeline(self.config["transforms_data"]["q"])
-        transforms_y = Pipeline(self.config["transforms_data"]["y"])
+        transforms_q = Pipeline(self.model.get_transformer_q())
+        transforms_y = Pipeline(self.model.get_transformer_y())
         if self.data_path.endswith(".h5"):
             self.dataset = HDF5Dataset(
                 self.data_path,
                 sample_frac=self.sample_frac,
                 transformer_q=transforms_q,
                 transformer_y=transforms_y,
-                metadata_filters=self.config["dataset"]["metadata_filters"],
+                # metadata_filters=self.config["dataset"]["metadata_filters"],
                 conversion_dict=self.conversion_dict,
                 use_data_q=False
             )
@@ -194,12 +194,12 @@ class VAEInferencer(BaseInferencer):
             import pandas as pd
 
             df = pd.read_csv(self.data_path)
-            technique_filter = [t.lower() for t in self.config["dataset"]["metadata_filters"].get("technique", [])]
-            material_filter = [m.lower() for m in self.config["dataset"]["metadata_filters"].get("material", [])]
-            if technique_filter:
-                df = df[df["technique"].str.lower().isin(technique_filter)]
-            if material_filter:
-                df = df[df["material"].str.lower().isin(material_filter)]
+            # technique_filter = [t.lower() for t in self.config["dataset"]["metadata_filters"].get("technique", [])]
+            # material_filter = [m.lower() for m in self.config["dataset"]["metadata_filters"].get("material", [])]
+            # if technique_filter:
+            #     df = df[df["technique"].str.lower().isin(technique_filter)]
+            # if material_filter:
+            #     df = df[df["material"].str.lower().isin(material_filter)]
             df = df.reset_index(drop=True)
             self.dataset = TXTDataset(
                 dataframe=df,
