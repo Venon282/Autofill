@@ -8,11 +8,9 @@ logger = get_logger(__name__)
 
 
 class BarlowTwinsLoss(nn.Module):
-    def __init__(self, batch_size, lambda_coeff=5e-3, z_dim=128):
+    def __init__(self, lambda_coeff=5e-3):
         super().__init__()
 
-        self.z_dim = z_dim
-        self.batch_size = batch_size
         self.lambda_coeff = lambda_coeff
 
     def off_diagonal_ele(self, x):
@@ -26,7 +24,7 @@ class BarlowTwinsLoss(nn.Module):
         z1_norm = (z1 - torch.mean(z1, dim=0)) / torch.std(z1, dim=0)
         z2_norm = (z2 - torch.mean(z2, dim=0)) / torch.std(z2, dim=0)
 
-        cross_corr = torch.matmul(z1_norm.T, z2_norm) / self.batch_size
+        cross_corr = torch.matmul(z1_norm.T, z2_norm) / z.size(0)
 
         on_diag = torch.diagonal(cross_corr).add_(-1).pow_(2).sum()
         off_diag = self.off_diagonal_ele(cross_corr).pow_(2).sum()

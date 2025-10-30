@@ -30,7 +30,7 @@ class PlPairVAE(pl.LightningModule):
 
         self.model = PairVAE(**model_config.model_dump())
 
-        self.barlow_twins_loss = BarlowTwinsLoss(train_config.lambda_param)
+        self.barlow_twins_loss = BarlowTwinsLoss(lambda_coeff=train_config.lambda_param)
         # self._setup_data_q_config(force_dataset_q)
         self.save_hyperparameters({
             "model_config": model_config.model_dump(),
@@ -108,22 +108,10 @@ class PlPairVAE(pl.LightningModule):
             self.log(f"{stage}_loss_{k}", v, on_step=True, on_epoch=True, prog_bar=False, sync_dist=True)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(
-            self.model.parameters(),
-            lr=self.train_cfg.max_lr
-        )
+        """Use AdamW with a ReduceLROnPlateau scheduler on validation loss."""
 
-        warmup_epochs = self.train_cfg.warmup_epochs
-
-        def lr_lambda(current_epoch):
-            if current_epoch < warmup_epochs:
-                return float(current_epoch + 1) / float(warmup_epochs)
-            else:
-                return 1.0
-
-        warmup_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
-
-        plateau_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.train_cfg.max_lr)
+        scheduler = ReduceLROnPlateau(
             optimizer,
             mode="min",
             threshold=1e-3,
@@ -131,15 +119,14 @@ class PlPairVAE(pl.LightningModule):
             patience=10,
             min_lr=self.train_cfg.eta_min,
         )
-
         return {
-                "optimizer": optimizer,
-                "lr_scheduler": {
-                    "scheduler": warmup_scheduler,
-                    "interval": "epoch",
-                    "frequency": 1,
-                },
-            }
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "monitor": "val_loss",
+                "interval": "epoch",
+            },
+        }
 
     def _prepare_batch(self, batch, data_type):
         """Prepare batch for specific data type, using config data_q if available."""
