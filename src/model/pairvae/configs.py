@@ -10,8 +10,6 @@ class PairVAEModelConfig(BaseModel):
     ckpt_path_les: Optional[str] = Field(None, description="Checkpoint path for pretrained LES VAE")
     lr: float = Field(1e-4, ge=0)
     freeze_subvae: bool = False
-    data_q_saxs: Optional[List[float]] = None
-    data_q_les: Optional[List[float]] = None
     transforms_data: Optional[Dict[str, Any]] = None
 
 

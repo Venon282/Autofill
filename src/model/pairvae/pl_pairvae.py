@@ -23,29 +23,29 @@ class PlPairVAE(pl.LightningModule):
         self,
         model_config: PairVAEModelConfig,
         train_config: PairVAETrainingConfig,
-        force_dataset_q: bool = False,
     ):
         super().__init__()
         self.model_cfg = model_config
         self.train_cfg = train_config
+
         self.model = PairVAE(**model_config.model_dump())
 
         self.barlow_twins_loss = BarlowTwinsLoss(train_config.lambda_param)
-        self._setup_data_q_config(force_dataset_q)
+        # self._setup_data_q_config(force_dataset_q)
         self.save_hyperparameters({
             "model_config": model_config.model_dump(),
             "train_config": train_config.model_dump()
         })
 
-    def _setup_data_q_config(self, force_dataset_q=False):
-        for data_type in ["saxs", "les"]:
-            config_key = f"data_q_{data_type}"
-            value = getattr(self.model_cfg, config_key)
-            if not force_dataset_q and value is not None:
-                setattr(self, config_key, torch.tensor(value, device=self.device))
-                logger.warning("Using %s from configuration", config_key)
-            else:
-                logger.warning("Using %s provided by the dataloader", config_key)
+    # def _setup_data_q_config(self, force_dataset_q=False):
+    #     for data_type in ["saxs", "les"]:
+    #         config_key = f"data_q_{data_type}"
+    #         value = getattr(self.model_cfg, config_key)
+    #         if not force_dataset_q and value is not None:
+    #             setattr(self, config_key, torch.tensor(value, device=self.device))
+    #             logger.warning("Using %s from configuration", config_key)
+    #         else:
+    #             logger.warning("Using %s provided by the dataloader", config_key)
 
     def forward(self, batch):
         return self.model(batch)
@@ -209,22 +209,16 @@ class PlPairVAE(pl.LightningModule):
     #     return self.data_q_les
 
     def get_data_q_saxs(self):
-        if hasattr(self, 'data_q_saxs'):
-            return self.data_q_saxs
-        else:
-            raise AttributeError("data_q_saxs is not set. Please ensure it is provided in the dataloader or config.")
+        return self.model.vae_saxs.get_data_q()
 
     def get_data_q_les(self):
-        if hasattr(self, 'data_q_les'):
-            return self.data_q_les
-        else:
-            raise AttributeError("data_q_les is not set. Please ensure it is provided in the dataloader or config.")
+        return self.model.vae_les.get_data_q()
 
-    def have_data_q_saxs(self):
-        return hasattr(self, 'data_q_saxs')
-
-    def have_data_q_les(self):
-        return hasattr(self, 'data_q_les')
+    # def have_data_q_saxs(self):
+    #     return hasattr(self, 'data_q_saxs')
+    #
+    # def have_data_q_les(self):
+    #     return hasattr(self, 'data_q_les')
 
     def on_load_checkpoint(self, checkpoint):
         """Restore full PairVAE and its sub-VAEs from unified checkpoint."""
@@ -267,6 +261,7 @@ class PlPairVAE(pl.LightningModule):
 
         checkpoint["vae_saxs"] = _extract_vae_info(self.model.vae_saxs)
         checkpoint["vae_les"] = _extract_vae_info(self.model.vae_les)
+
 
     def set_global_config(self, global_config):
         """Set global configuration for the model and submodules."""

@@ -141,7 +141,7 @@ class TrainPipeline:
             model = PlPairVAE(model_config=model_cfg, train_config=train_cfg)
             transform_les = model.model.vae_les.get_transformer()
             transform_saxs = model.model.vae_saxs.get_transformer()
-            use_data_q = not (getattr(model, "data_q_les", None) and getattr(model, "data_q_saxs", None))
+
 
             dataset = PairHDF5Dataset(
                 **dataset_cfg,
@@ -149,12 +149,8 @@ class TrainPipeline:
                 transformer_y_saxs=Pipeline(transform_saxs["y"]),
                 transformer_q_les=Pipeline(transform_les["q"]),
                 transformer_y_les=Pipeline(transform_les["y"]),
-                use_data_q=use_data_q,
+                use_data_q=False,
             )
-
-            # Track q-values for reproducibility
-            model_cfg.data_q_saxs = dataset.get_data_q_saxs()
-            model_cfg.data_q_les = dataset.get_data_q_les()
 
             curves_config = {
                 "saxs": {"truth_key": "data_y_saxs", "pred_keys": ["recon_saxs", "recon_les2saxs"], "use_loglog": True},
