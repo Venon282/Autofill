@@ -83,7 +83,6 @@ class TextToHDF5Converter:
         hdf.create_dataset("data_q", (1, self.pad_size), maxshape=(None, self.pad_size), dtype=np.float64)
         hdf.create_dataset("data_y", (1, self.pad_size), maxshape=(None, self.pad_size), dtype=np.float64)
         hdf.create_dataset("len", (1,), maxshape=(None,))
-        hdf.create_dataset("csv_index", (1,), maxshape=(None,))
         for col in self.metadata_cols:
             hdf.create_dataset(col, (1,), maxshape=(None,), dtype=np.float64)
         return hdf
@@ -99,8 +98,6 @@ class TextToHDF5Converter:
         self.hdf_file["data_y"][current_index : current_index + current_size, :] = self.hdf_data[1][:current_size, :]
         self.hdf_file["len"].resize((current_index + current_size,))
         self.hdf_file["len"][current_index : current_index + current_size] = self.hdf_data[2][:current_size]
-        self.hdf_file["csv_index"].resize((current_index + current_size,))
-        self.hdf_file["csv_index"][current_index : current_index + current_size] = self.hdf_data[3][:current_size]
 
         for col in self.metadata_cols:
             self.hdf_file[col].resize((current_index + current_size,))

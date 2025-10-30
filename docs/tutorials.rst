@@ -182,9 +182,6 @@ The combined HDF5 file created by the converter (and required by `PairHDF5Datase
 * ``data_y_saxs``
 * ``data_q_les``
 * ``data_y_les``
-* ``csv_index``
-
-(Optionally the converter also writes ``csv_index_saxs`` and ``csv_index_les``.)
 
 .. tip::
    * When combining modalities, keep a consistent folder structure so both files in

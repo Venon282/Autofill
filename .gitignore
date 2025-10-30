@@ -18,3 +18,8 @@ mlruns/*
 saxs_to_saxs/*
 *.out
 les_to_saxs/
+
+.ipynb_checkpoints/
+Mat_Cext_Ag_cylinder
+config_locales/
+train_results/

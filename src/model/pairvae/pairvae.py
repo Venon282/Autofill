@@ -1,10 +1,11 @@
 """Wrapper combining two pretrained single-domain VAEs into a paired objective."""
 
 import torch
+import torch.nn as nn
 from lightning.pytorch import LightningModule
 
 from logging_utils import get_logger
-from model.vae.configs import VAETrainingConfig, VAEModelConfig
+from src.model.vae.configs import VAETrainingConfig, VAEModelConfig
 from src.model.vae.pl_vae import PlVAE
 
 logger = get_logger(__name__)

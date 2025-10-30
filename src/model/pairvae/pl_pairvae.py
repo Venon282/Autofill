@@ -110,20 +110,46 @@ class PlPairVAE(pl.LightningModule):
             self.log(f"{stage}_loss_{k}", v, on_step=True, on_epoch=True, prog_bar=False, sync_dist=True)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.train_cfg.max_lr)
+        optimizer = torch.optim.AdamW(
+            self.model.parameters(),
+            lr=self.train_cfg.max_lr
+        )
+
         warmup_epochs = self.train_cfg.warmup_epochs
         max_epochs = self.train_cfg.num_epochs
 
-        def lr_lambda(epoch):
-            if epoch < warmup_epochs:
-                return (epoch + 1) / warmup_epochs
-            progress = (epoch - warmup_epochs) / max(1, (max_epochs - warmup_epochs))
-            clipped = min(1.0, max(0.0, progress))
-            return 0.5 * (1.0 + math.cos(math.pi * clipped))
+        # --- 1️⃣ Warmup scheduler ---
+        def lr_lambda(current_epoch):
+            if current_epoch < warmup_epochs:
+                # linear warmup from 0 -> 1
+                return float(current_epoch + 1) / float(warmup_epochs)
+            else:
+                # after warmup, keep LR at 1x (no decay here, handled by ReduceLROnPlateau)
+                return 1.0
 
-        scheduler = LambdaLR(optimizer, lr_lambda=lr_lambda)
-        return {"optimizer": optimizer, "lr_scheduler": {"scheduler": scheduler, "interval": "epoch"}}
+        warmup_scheduler = LambdaLR(optimizer, lr_lambda=lr_lambda)
 
+        # --- 2️⃣ Plateau scheduler ---
+        plateau_scheduler = ReduceLROnPlateau(
+            optimizer,
+            mode="min",
+            threshold=1e-3,
+            factor=0.1,
+            patience=10,
+            min_lr=self.train_cfg.eta_min
+        )
+
+        # --- 3️⃣ Combine them ---
+        # You’ll need to step them manually:
+        #   - LambdaLR every epoch
+        #   - ReduceLROnPlateau on validation metric
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": [
+                {"scheduler": warmup_scheduler, "interval": "epoch", "frequency": 1},
+                {"scheduler": plateau_scheduler, "monitor": "val_loss", "interval": "epoch", "frequency": 1},
+            ],
+        }
     def _prepare_batch(self, batch, data_type):
         """Prepare batch for specific data type, using config data_q if available."""
         y_key = f'data_y_{data_type}'

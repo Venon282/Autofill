@@ -33,6 +33,7 @@ Quick start
    data_formats
    configuration
    tutorials
+   deep_learning_notes
 
 .. toctree::
    :maxdepth: 2
