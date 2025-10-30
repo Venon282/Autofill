@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-from model.vae.configs import VAEModelConfig, VAETrainingConfig
+from src.model.vae.configs import VAEModelConfig, VAETrainingConfig
 from src.logging_utils import get_logger
 from src.model.vae.submodel.registry import *
 
