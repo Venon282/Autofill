@@ -4,7 +4,8 @@ import math
 import os
 from random import sample
 from typing import Any, Dict, Iterable, Sequence, Union
-
+import matplotlib
+matplotlib.use("Agg")
 import lightning.pytorch as pl
 import matplotlib.pyplot as plt
 import torch
@@ -142,6 +143,10 @@ class InferencePlotCallback(pl.Callback):
                 logger.warning("Logger does not support figure logging.")
         if self.output_dir:
             os.makedirs(self.output_dir, exist_ok=True)
-            plot_path = os.path.join(self.output_dir, artifact_file)
-            plt.savefig(plot_path)
+            root, ext = os.path.splitext(artifact_file)
+            if not ext:
+                ext = ".png"
+            plot_path = os.path.join(self.output_dir, root + ext)
+            plt.tight_layout()
+            fig.savefig(plot_path, bbox_inches="tight", dpi=200)
         plt.close(fig)

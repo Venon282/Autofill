@@ -126,7 +126,7 @@ class TrainPipeline:
         model_type = self.config["model"]["type"].lower()
         training_cfg = self.config["training"]
         dataset_cfg = self.config["dataset"]
-        output_dir = training_cfg.get("output_dir", "inference_results")
+        output_dir = self.log_path / "inference_results"
         common_cb_args = {
             "num_samples": training_cfg.get("num_samples", 10),
             "every_n_epochs": training_cfg.get("every_n_epochs", 10),
@@ -213,7 +213,7 @@ class TrainPipeline:
             train_args = {**common_cb_args, "artifact_file": "train_plot.png"}
             inf_train = InferencePlotCallback(
                 curves_config=curves_config,
-                output_dir=str(self.log_path / "inference_results"),
+                output_dir=output_dir,
                 **train_args,
             )
             callbacks.insert(0, inf_train)
@@ -329,8 +329,7 @@ class TrainPipeline:
             from lightning.pytorch.loggers import TensorBoardLogger
             self.logger = TensorBoardLogger(
                 save_dir=str(self.log_path.parent / "tensorboard_logs"),
-                name=str(self.log_path.name),
-                # version=self.config['run_name']
+                version=self.config['run_name']
             )
 
         self.logger.log_hyperparams(self.config)
