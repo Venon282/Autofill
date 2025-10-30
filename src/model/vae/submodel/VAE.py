@@ -95,23 +95,24 @@ class VAE(nn.Module):
 
     # ---- DECODER ----
     def decode(self, z):
-        x = self.decoder_input(z)
-        x = x.view(-1, self.encoder[-1][0].out_channels, self.compressed_length)
-        x = self.decoder(x)
-        x = self.final_layer(x)
-        return x
+        recon = self.decoder_input(z)
+        recon = recon.view(-1, self.encoder[-1][0].out_channels, self.compressed_length)
+        recon = self.decoder(recon)
+        recon = self.final_layer(recon)
+
+        # Ajustement automatique de taille si nécessaire
+        if recon.size(-1) > self.input_dim:
+            recon = recon[..., :self.input_dim]
+        elif recon.size(-1) < self.input_dim:
+            diff = self.input_dim - recon.size(-1)
+            recon = torch.nn.functional.pad(recon, (0, diff))
+
+        return recon
 
     # ---- FORWARD ----
     def forward(self, x, metadata=None):
         mu, logvar = self.encode(x)
         z = self.reparameterize(mu, logvar)
         recon = self.decode(z)
-
-        # Ajustement automatique de taille si nécessaire
-        if recon.size(-1) > x.size(-1):
-            recon = recon[..., :x.size(-1)]
-        elif recon.size(-1) < x.size(-1):
-            diff = x.size(-1) - recon.size(-1)
-            recon = torch.nn.functional.pad(recon, (0, diff))
 
         return {"recon": recon, "mu": mu, "logvar": logvar, "z": z}

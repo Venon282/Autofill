@@ -150,8 +150,8 @@ class PlVAE(pl.LightningModule):
             mode="min",
             threshold=1e-3,
             factor=0.1,
-            patience=5,
-            min_lr=1e-10,
+            patience=10,
+            min_lr=self.config["training"]["eta_min"],
         )
         return {
             "optimizer": optimizer,
