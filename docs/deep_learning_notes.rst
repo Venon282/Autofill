@@ -170,6 +170,8 @@ The reconstruction loss is defined as:
 
    \mathcal{L}_{\text{rec}} = \frac{1}{N} \sum_{i=1}^{N} \| x_i - \hat{x}_i \|_2^2
 
+If you wish to use Binary Cross Entropy loss for a test, you can activate the Sigmoid layer in VAE.py or ResVAE.py.
+
 Barlow-Twinn Loss
 *****************
 

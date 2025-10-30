@@ -51,7 +51,7 @@ class ResidualUpBlock(nn.Module):
 class ResVAEBN(nn.Module):
     def __init__(self, input_dim, latent_dim, in_channels=1,
                  down_channels=[32, 64, 128], up_channels=[128, 64, 32], dilation=1,
-                 output_channels=1, strat="y", use_sigmoid=True, *args, **kwargs):
+                 output_channels=1, strat="y", use_sigmoid=False, *args, **kwargs):
         super(ResVAEBN, self).__init__()
 
         if len(down_channels) != len(up_channels):

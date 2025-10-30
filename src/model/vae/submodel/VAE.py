@@ -71,10 +71,7 @@ class VAE(nn.Module):
                 output_channels,
                 kernel_size=4,
                 stride=2,
-                padding=1
-            ),
-            nn.Sigmoid()  # pour données [0, 1]
-        )
+                padding=1) )
 
     def display_info(self):
         logger.info("RESEAU VAE")
