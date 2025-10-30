@@ -1,5 +1,6 @@
+import numpy as np
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, Union, List, Dict, Any
 
 
 class PairVAEModelConfig(BaseModel):
@@ -9,8 +10,9 @@ class PairVAEModelConfig(BaseModel):
     ckpt_path_les: Optional[str] = Field(None, description="Checkpoint path for pretrained LES VAE")
     lr: float = Field(1e-4, ge=0)
     freeze_subvae: bool = False
-    data_q_saxs: Optional[list[float]] = None
-    data_q_les: Optional[list[float]] = None
+    data_q_saxs: Optional[List[float]] = None
+    data_q_les: Optional[List[float]] = None
+    transforms_data: Optional[Dict[str, Any]] = None
 
 
 class PairVAETrainingConfig(BaseModel):
@@ -26,3 +28,4 @@ class PairVAETrainingConfig(BaseModel):
     num_epochs: int = 100
     warmup_epochs: int = 5    
     eta_min: float = 1e-15
+    use_loglog: bool = False

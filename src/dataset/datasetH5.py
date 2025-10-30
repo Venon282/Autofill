@@ -246,7 +246,7 @@ class HDF5Dataset(Dataset):
         """Return the inverse transformation functions for data_y and data_q."""
         def func(y_arr, q_arr):
             y_arr = self.transformer_y.invert(y_arr)
-            q_arr = self.transformer_q.invert(q_arr) if self.use_data_q and q_arr is not None else None
+            q_arr = self.transformer_q.invert(q_arr)
             return y_arr, q_arr
         return func
 

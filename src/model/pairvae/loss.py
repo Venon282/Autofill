@@ -3,6 +3,8 @@
 import torch
 import torch.nn as nn
 
+from src.logging_utils import get_logger
+logger = get_logger(__name__)
 
 class BarlowTwinsLoss(nn.Module):
     """Implementation of the Barlow Twins loss for latent alignment."""
@@ -20,38 +22,29 @@ class BarlowTwinsLoss(nn.Module):
             raise ValueError("Input must be a square matrix")
         return matrix.flatten()[:-1].view(rows - 1, rows + 1)[:, 1:].flatten()
 
-    def forward(self, z_saxs: torch.Tensor, z_les: torch.Tensor) -> torch.Tensor:
-        """Compute the correlation alignment loss between two latent batches."""
+    class BarlowTwinsLoss(nn.Module):
+        def __init__(self, batch_size, lambda_coeff=5e-3, z_dim=128):
+            super().__init__()
 
-        if torch.isnan(z_saxs).any() or torch.isinf(z_saxs).any():
-            raise RuntimeError("BarlowTwinsLoss: z_saxs contains NaN or inf values")
-        if torch.isnan(z_les).any() or torch.isinf(z_les).any():
-            raise RuntimeError("BarlowTwinsLoss: z_les contains NaN or inf values")
+            self.z_dim = z_dim
+            self.batch_size = batch_size
+            self.lambda_coeff = lambda_coeff
 
-        batch_size = z_saxs.shape[0]
-        std_saxs = torch.std(z_saxs, dim=0)
-        std_les = torch.std(z_les, dim=0)
-        if (std_saxs == 0).any():
-            raise RuntimeError("BarlowTwinsLoss: std(z_saxs) is zero for some dimensions")
-        if (std_les == 0).any():
-            raise RuntimeError("BarlowTwinsLoss: std(z_les) is zero for some dimensions")
+        def off_diagonal_ele(self, x):
+            # taken from: https://github.com/facebookresearch/barlowtwins/blob/main/main.py
+            # return a flattened view of the off-diagonal elements of a square matrix
+            n, m = x.shape
+            assert n == m
+            return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
 
-        safe_std_saxs = std_saxs.clone()
-        safe_std_saxs[safe_std_saxs == 0] = 1.0
-        safe_std_les = std_les.clone()
-        safe_std_les[safe_std_les == 0] = 1.0
+        def forward(self, z1, z2):
+            z1_norm = (z1 - torch.mean(z1, dim=0)) / torch.std(z1, dim=0)
+            z2_norm = (z2 - torch.mean(z2, dim=0)) / torch.std(z2, dim=0)
 
-        z_saxs_norm = (z_saxs - torch.mean(z_saxs, dim=0)) / safe_std_saxs
-        z_les_norm = (z_les - torch.mean(z_les, dim=0)) / safe_std_les
-        if torch.isnan(z_saxs_norm).any() or torch.isinf(z_saxs_norm).any():
-            raise RuntimeError("BarlowTwinsLoss: normalised z_saxs contains NaN or inf values")
-        if torch.isnan(z_les_norm).any() or torch.isinf(z_les_norm).any():
-            raise RuntimeError("BarlowTwinsLoss: normalised z_les contains NaN or inf values")
+            cross_corr = torch.matmul(z1_norm.T, z2_norm) / self.batch_size
 
-        cross_corr = torch.matmul(z_saxs_norm.T, z_les_norm) / batch_size
-        if torch.isnan(cross_corr).any() or torch.isinf(cross_corr).any():
-            raise RuntimeError("BarlowTwinsLoss: cross-correlation contains NaN or inf values")
+            on_diag = torch.diagonal(cross_corr).add_(-1).pow_(2).sum()
+            off_diag = self.off_diagonal_ele(cross_corr).pow_(2).sum()
 
-        on_diag = torch.diagonal(cross_corr).add_(-1).pow_(2).sum()
-        off_diag = self.off_diagonal_elements(cross_corr).pow_(2).sum()
-        return on_diag + self.lambda_coeff * off_diag
+            return on_diag + self.lambda_coeff * off_diag
+

@@ -21,3 +21,4 @@ class VAETrainingConfig(BaseModel):
     weighted_loss: bool = False
     weighted_loss_limit_index: Optional[int] = None
     eta_min: float = 1e-15
+    use_loglog: bool = False

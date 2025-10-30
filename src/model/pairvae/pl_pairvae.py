@@ -6,8 +6,6 @@ from typing import Optional
 import lightning.pytorch as pl
 import torch
 import torch.nn.functional as F
-from torch.optim.lr_scheduler import LambdaLR
-
 from src.model.pairvae.configs import PairVAEModelConfig, PairVAETrainingConfig
 from src.model.vae.configs import VAEModelConfig, VAETrainingConfig
 from src.logging_utils import get_logger
@@ -116,40 +114,33 @@ class PlPairVAE(pl.LightningModule):
         )
 
         warmup_epochs = self.train_cfg.warmup_epochs
-        max_epochs = self.train_cfg.num_epochs
 
-        # --- 1️⃣ Warmup scheduler ---
         def lr_lambda(current_epoch):
             if current_epoch < warmup_epochs:
-                # linear warmup from 0 -> 1
                 return float(current_epoch + 1) / float(warmup_epochs)
             else:
-                # after warmup, keep LR at 1x (no decay here, handled by ReduceLROnPlateau)
                 return 1.0
 
-        warmup_scheduler = LambdaLR(optimizer, lr_lambda=lr_lambda)
+        warmup_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
 
-        # --- 2️⃣ Plateau scheduler ---
-        plateau_scheduler = ReduceLROnPlateau(
+        plateau_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer,
             mode="min",
             threshold=1e-3,
             factor=0.1,
             patience=10,
-            min_lr=self.train_cfg.eta_min
+            min_lr=self.train_cfg.eta_min,
         )
 
-        # --- 3️⃣ Combine them ---
-        # You’ll need to step them manually:
-        #   - LambdaLR every epoch
-        #   - ReduceLROnPlateau on validation metric
         return {
-            "optimizer": optimizer,
-            "lr_scheduler": [
-                {"scheduler": warmup_scheduler, "interval": "epoch", "frequency": 1},
-                {"scheduler": plateau_scheduler, "monitor": "val_loss", "interval": "epoch", "frequency": 1},
-            ],
-        }
+                "optimizer": optimizer,
+                "lr_scheduler": {
+                    "scheduler": warmup_scheduler,
+                    "interval": "epoch",
+                    "frequency": 1,
+                },
+            }
+
     def _prepare_batch(self, batch, data_type):
         """Prepare batch for specific data type, using config data_q if available."""
         y_key = f'data_y_{data_type}'
@@ -204,10 +195,10 @@ class PlPairVAE(pl.LightningModule):
             raise KeyError(f"Need '{y_key}' or 'data_y' in batch")
 
     def get_transforms_data_les(self):
-        return self.model.get_les_config()["transforms_data"]
+        return self.model.vae_les.get_transformer()
 
     def get_transforms_data_saxs(self):
-        return self.model.get_saxs_config()["transforms_data"]
+        return self.model.vae_saxs.get_transformer()
 
     # def get_data_q_saxs(self):
     #     """Return the original data_q_saxs array"""
@@ -235,7 +226,6 @@ class PlPairVAE(pl.LightningModule):
     def have_data_q_les(self):
         return hasattr(self, 'data_q_les')
 
-    @classmethod
     def on_load_checkpoint(self, checkpoint):
         """Restore full PairVAE and its sub-VAEs from unified checkpoint."""
         pair_model_cfg = PairVAEModelConfig(**checkpoint["pairvae_model_config"])
@@ -271,8 +261,8 @@ class PlPairVAE(pl.LightningModule):
                 "model_config": vae.model_cfg.model_dump(),
                 "train_config": vae.train_cfg.model_dump(),
                 "state_dict": vae.state_dict(),
-                "data_q": getattr(vae, "data_q", None),
-                "transforms_data": getattr(vae, "transforms_data", None),
+                "data_q": getattr(vae, "data_q", []).tolist(),
+                "transforms_data": getattr(vae, "transforms_data", {}),
             }
 
         checkpoint["vae_saxs"] = _extract_vae_info(self.model.vae_saxs)

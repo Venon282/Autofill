@@ -3,6 +3,7 @@
 import lightning.pytorch as pl
 import torch
 import torch.nn.functional as F
+from pydantic import ValidationError
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from src.model.vae.configs import VAEModelConfig, VAETrainingConfig
@@ -91,7 +92,7 @@ class PlVAE(pl.LightningModule):
 
     def forward(self, batch):
         output = self.model(x=batch["data_y"], metadata=batch["metadata"])
-        return {**output, "data_q": getattr(self, "data_q", batch["data_q"])}
+        return {**output, "data_q": getattr(self, "data_q", batch["data_q"] if "data_q" in batch else None)}
 
     def decode(self, *args, **kwargs):
         return self.model.decode(*args, **kwargs)
@@ -186,6 +187,12 @@ class PlVAE(pl.LightningModule):
         else:
             raise AttributeError("transforms_data is not set in PlVAE.")
 
+    def get_input_dim(self):
+        if hasattr(self.model, 'input_dim'):
+            return self.model.input_dim
+        else:
+            raise AttributeError("model does not have attribute 'input_dim'.")
+
 
     def on_save_checkpoint(self, checkpoint):
         """Save a clean, reproducible state including configs, data_q, and transforms."""
@@ -196,9 +203,31 @@ class PlVAE(pl.LightningModule):
         checkpoint["global_config"] = self.global_config
 
     def on_load_checkpoint(self, checkpoint):
-        """Rebuild model and configuration from saved checkpoint."""
-        model_cfg = VAEModelConfig(**checkpoint["model_config"])
-        train_cfg = VAETrainingConfig(**checkpoint["train_config"])
+        """Rebuild model and configuration from saved checkpoint, with clearer error messages."""
+        try:
+            model_cfg = VAEModelConfig(**checkpoint["model_config"])
+        except KeyError:
+            raise KeyError("Checkpoint missing key 'model_config'.")
+        except ValidationError as e:
+            print("Validation error in VAEModelConfig:")
+            for err in e.errors():
+                loc = ".".join(str(x) for x in err["loc"])
+                print(f"  - {loc}: {err['msg']} ({err['type']})")
+            raise
+
+        try:
+            train_cfg = VAETrainingConfig(**checkpoint["train_config"])
+        except KeyError:
+            raise KeyError("Checkpoint missing key 'train_config'.")
+        except ValidationError as e:
+            print("Validation error in VAETrainingConfig:")
+            for err in e.errors():
+                loc = ".".join(str(x) for x in err["loc"])
+                print(f"  - {loc}: {err['msg']} ({err['type']})")
+            raise
+
+        self.model_cfg = model_cfg
+        self.train_cfg = train_cfg
 
         model_class = MODEL_REGISTRY.get(model_cfg.vae_class)
         if model_class is None:

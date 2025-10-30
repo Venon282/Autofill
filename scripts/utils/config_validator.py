@@ -207,7 +207,6 @@ def check_gpu_availability(num_gpus: int) -> list[str]:
     try:
         import torch
     except ImportError:
-        torch = None
         warnings.append("PyTorch not available - cannot check GPU status")
     else:
         if num_gpus > 0:
