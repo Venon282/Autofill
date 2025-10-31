@@ -288,7 +288,7 @@ class TrainPipeline:
                 logger.warning("Test indices array provided without train/val indices; ignoring test split.")
 
         batch_size = cfg_train['batch_size']
-        num_workers = cfg_train.get('num_workers', min(1, os.cpu_count()))
+        num_workers = cfg_train.get('num_workers', max(1, os.cpu_count()))
 
         logger.info("Building DataLoaders (batch_size=%d, num_workers=%d)", batch_size, num_workers)
 
@@ -342,7 +342,7 @@ class TrainPipeline:
             log_every_n_steps=10,
             callbacks=self.all_callbacks,
             logger=self.logger,
-            enable_progress_bar=False,
+            # enable_progress_bar=False,
         )
 
     def _setup_log_directory(self) -> str:

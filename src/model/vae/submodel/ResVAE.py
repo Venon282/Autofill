@@ -108,7 +108,7 @@ class ResVAE(nn.Module):
             layers.append(nn.Sigmoid())
 
         self.decoder = nn.Sequential(*layers)
-        self.display_info()
+        # self.display_info()
 
     def display_info(self):
         test_tensor = torch.zeros(1, self.in_channels, self.input_dim)

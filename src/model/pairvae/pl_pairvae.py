@@ -6,6 +6,8 @@ from typing import Optional
 import lightning.pytorch as pl
 import torch
 import torch.nn.functional as F
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+
 from src.model.pairvae.configs import PairVAEModelConfig, PairVAETrainingConfig
 from src.model.vae.configs import VAEModelConfig, VAETrainingConfig
 from src.logging_utils import get_logger

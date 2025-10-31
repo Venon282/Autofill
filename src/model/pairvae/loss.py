@@ -21,10 +21,14 @@ class BarlowTwinsLoss(nn.Module):
         return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
 
     def forward(self, z1, z2):
-        z1_norm = (z1 - torch.mean(z1, dim=0)) / torch.std(z1, dim=0)
-        z2_norm = (z2 - torch.mean(z2, dim=0)) / torch.std(z2, dim=0)
+        eps = 1e-8
+        z1_std = torch.std(z1, dim=0, correction=0)
+        z2_std = torch.std(z2, dim=0, correction=0)
 
-        cross_corr = torch.matmul(z1_norm.T, z2_norm) / z.size(0)
+        z1_norm = (z1 - torch.mean(z1, dim=0)) / (z1_std + eps)
+        z2_norm = (z2 - torch.mean(z2, dim=0)) / (z2_std + eps)
+
+        cross_corr = torch.matmul(z1_norm.T, z2_norm) / z1.size(0)
 
         on_diag = torch.diagonal(cross_corr).add_(-1).pow_(2).sum()
         off_diag = self.off_diagonal_ele(cross_corr).pow_(2).sum()

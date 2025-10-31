@@ -477,6 +477,12 @@ representations.
 
    python scripts/03_train.py --config config/pair_vae.yaml
 
+.. note::
+   When training the PairVAE, the PairDataset's ``data_q`` entries are **not** used.
+   Instead, the PairVAE loads the ``data_q`` that were produced/used by the single VAEs
+   previously trained and saved in their checkpoints (ckpt).
+
+
 **Configuration requirements**
 
 PairVAE training requires a YAML configuration file that specifies:
