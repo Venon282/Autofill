@@ -25,6 +25,8 @@ from src.model.pairvae.pl_pairvae import PlPairVAE
 from src.model.vae.pl_vae import PlVAE
 from src.logging_utils import get_logger
 
+torch.set_float32_matmul_precision('high')
+
 logger = get_logger(__name__)
 
 class NumpySafeDumper(yaml.SafeDumper):
