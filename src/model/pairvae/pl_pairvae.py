@@ -13,7 +13,7 @@ from src.model.vae.configs import VAEModelConfig, VAETrainingConfig
 from src.logging_utils import get_logger
 from src.model.pairvae.loss import BarlowTwinsLoss
 from src.model.pairvae.pairvae import PairVAE
-
+from src.model.pairvae.scheduler import WarmupReduceLROnPlateau
 
 logger = get_logger(__name__)
 
@@ -91,6 +91,11 @@ class PlPairVAE(pl.LightningModule):
         loss_total, details = self.compute_loss(batch, outputs)
         self.log("train_loss", loss_total, on_step=True, on_epoch=True, prog_bar=True)
         self._log_details("train", details)
+
+        # 🔹 Log LR à chaque epoch
+        current_lr = self.trainer.optimizers[0].param_groups[0]["lr"]
+        self.log("lr", current_lr, on_epoch=True)
+
         return loss_total
 
     def validation_step(self, batch, batch_idx):
@@ -110,17 +115,22 @@ class PlPairVAE(pl.LightningModule):
             self.log(f"{stage}_loss_{k}", v, on_step=True, on_epoch=True, prog_bar=False, sync_dist=True)
 
     def configure_optimizers(self):
-        """Use AdamW with a ReduceLROnPlateau scheduler on validation loss."""
-
         optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.train_cfg.max_lr)
-        scheduler = ReduceLROnPlateau(
+
+        scheduler = WarmupReduceLROnPlateau(
             optimizer,
-            mode="min",
-            threshold=1e-3,
-            factor=0.1,
-            patience=10,
-            min_lr=self.train_cfg.eta_min,
+            warmup_epochs=self.train_cfg.warmup_epochs,
+            max_lr=self.train_cfg.max_lr,
+            eta_min=self.train_cfg.eta_min,
+            reduce_on_plateau_args=dict(
+                mode="min",
+                factor=0.1,
+                patience=10,
+                threshold=1e-3,
+                min_lr=self.train_cfg.eta_min,
+            ),
         )
+
         return {
             "optimizer": optimizer,
             "lr_scheduler": {

@@ -293,6 +293,8 @@ class TrainPipeline:
         logger.info("Building DataLoaders (batch_size=%d, num_workers=%d)", batch_size, num_workers)
 
         if 'train' in subsets:
+            print("TRAIN SIZE")
+            print(len(subsets['train']))  
             loaders['train'] = DataLoader(subsets['train'], batch_size=batch_size, shuffle=True,
                                           num_workers=num_workers)
         if 'val' in subsets:
@@ -342,7 +344,7 @@ class TrainPipeline:
             log_every_n_steps=10,
             callbacks=self.all_callbacks,
             logger=self.logger,
-            # enable_progress_bar=False,
+            enable_progress_bar=False,
         )
 
     def _setup_log_directory(self) -> str:

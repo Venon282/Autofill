@@ -122,6 +122,11 @@ class PlVAE(pl.LightningModule):
         self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True)
         self.log('train_recon_loss', recon_loss, on_step=True, on_epoch=True, prog_bar=False)
         self.log('train_kl_loss', kl_loss, on_step=True, on_epoch=True, prog_bar=False)
+
+        # 🔹 Log LR à chaque epoch
+        current_lr = self.trainer.optimizers[0].param_groups[0]["lr"]
+        self.log("lr", current_lr, on_epoch=True)
+
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -151,7 +156,7 @@ class PlVAE(pl.LightningModule):
             mode="min",
             threshold=1e-3,
             factor=0.1,
-            patience=10,
+            patience=5,
             min_lr=self.train_cfg.eta_min,
         )
         return {

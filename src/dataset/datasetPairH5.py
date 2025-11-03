@@ -51,7 +51,6 @@ class PairHDF5Dataset(Dataset):
         self.data_y_saxs = self.hdf['data_y_saxs']
         self.data_q_les = self.hdf['data_q_les']
         self.data_y_les = self.hdf['data_y_les']
-        self.data_index = [i for i in range(len(self.data_y_saxs))]
 
         if self.use_data_q:
             first_q_saxs = self.data_q_saxs[0]
@@ -215,7 +214,7 @@ class PairHDF5Dataset(Dataset):
             batch["data_q_saxs"] = data_q_saxs
             batch["data_q_les"] = data_q_les
         
-        batch["data_index"] = self.data_index[original_idx]
+        batch["data_index"] = original_idx
         return batch
 
     def close(self):

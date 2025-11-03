@@ -8,8 +8,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from logging_utils import get_logger
-from model.vae.pl_vae import PlVAE
+from src.logging_utils import get_logger
+from src.model.vae.pl_vae import PlVAE
 
 logger = get_logger(__name__)
 

@@ -17,6 +17,7 @@ class VAETrainingConfig(BaseModel):
     """Training configuration for the VAE Lightning module."""
     max_lr: float = Field(default=1e-3, gt=0)
     warmup_epochs: int = Field(default=5, ge=0)
+    patience: int = 40
     num_epochs: int = Field(default=100, ge=1)
     weighted_loss: bool = False
     weighted_loss_limit_index: Optional[int] = None
