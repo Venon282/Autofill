@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from pydantic import ValidationError
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-from model.configs import VAEModelConfig, VAETrainingConfig
+from src.model.configs import VAEModelConfig, VAETrainingConfig
 from src.logging_utils import get_logger
 from src.model.vae.submodel.registry import *
 
@@ -60,9 +60,6 @@ class PlVAE(pl.LightningModule):
 
         if not force_dataset_q and model_config.data_q is not None:
             self.data_q = torch.tensor(model_config.data_q, dtype=torch.float32)
-            logger.warning("Using data_q from configuration.")
-        else:
-            logger.warning("Using data_q provided by the dataloader.")
 
         # self.save_hyperparameters({
         #     "model_config": model_config.model_dump(),
@@ -246,8 +243,9 @@ class PlVAE(pl.LightningModule):
         self.train_cfg = train_cfg
         self.beta = model_cfg.beta
         self.set_global_config(checkpoint['global_config'])
-
+        assert model_cfg.data_q is not None, "data_q must be defined in the checkpoint's model_config."
         self.data_q = torch.tensor(model_cfg.data_q, dtype=torch.float32)
+
         self.transforms_data = model_cfg.transforms_data
 
         self.load_state_dict(checkpoint["state_dict"])

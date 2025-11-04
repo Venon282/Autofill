@@ -46,22 +46,19 @@ class HDF5Dataset(Dataset):
         self.hdf = h5py.File(hdf5_file, 'r', swmr=True)
         self.use_data_q = use_data_q
 
-        if self.use_data_q:
-            try:
-                if "data_q" in self.hdf:
-                    self.data_q = self.hdf["data_q"]
-                else:
-                    self.data_q = self.hdf["data_wavelength"]
-            except Exception as e:
-                raise ValueError(f"Error loading 'data_q' or 'data_wavelength' from HDF5 file: {e}")
+        try:
+            if "data_q" in self.hdf:
+                self.data_q = self.hdf["data_q"]
+            else:
+                self.data_q = self.hdf["data_wavelength"]
+        except Exception as e:
+            raise ValueError(f"Error loading 'data_q' or 'data_wavelength' from HDF5 file: {e}")
 
             first_q = self.data_q[0]
             for i in tqdm(range(len(self.data_q)), desc="Sanity checking H5", leave=False):
                 if not np.array_equal(self.data_q[i], first_q):
                     raise AssertionError("All data_q/data_wavelength arrays must be identical")
             self.data_q = first_q
-        else:
-            self.data_q = None
 
         # --- Load intensity data ---
         self.data_y = self.hdf['data_y']
@@ -196,8 +193,10 @@ class HDF5Dataset(Dataset):
             "data_index": original_idx
         }
 
-        if data_q is not None:
+        if self.use_data_q:
             batch["data_q"] = data_q
+        else:
+            batch["data_q"] = None
 
         return batch
 
@@ -222,7 +221,7 @@ class HDF5Dataset(Dataset):
 
     def get_data_q(self):
         """Return the original data_q array (if loaded)."""
-        return self.data_q
+        return np.array(self.data_q)
 
     def invert_transforms_func(self):
         """Return the inverse transformation functions for data_y and data_q."""

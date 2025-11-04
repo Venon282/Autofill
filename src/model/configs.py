@@ -1,7 +1,11 @@
 from typing import Any, Dict, Optional, Union
 from pathlib import Path
 from enum import Enum
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+from src.logging_utils import get_logger
+
+logger = get_logger(__name__, custom_name="CONFIG")
+
 
 
 class ModelType(str, Enum):
@@ -25,22 +29,52 @@ class BaseModelConfig(BaseModel):
     type: ModelType = Field(..., description="Model type identifier.")
     spec: ModelSpec  = Field(..., description="Model specification.")
     transforms_data: Optional[Dict[str, Any]] = Field(
-        default=None, description="Optional data transformation config.")
+        default=None, description="Optional data transformation config."
+    )
+    verbose: bool = Field(default=True, description="If False, disables config warnings.")
+
+    @model_validator(mode="before")
+    def warn_extra_fields(cls, values):
+        verbose = values.get("verbose", True)
+        if not verbose:
+            return values
+
+        known_fields = set(cls.model_fields.keys())
+        extra = [k for k in values.keys() if k not in known_fields]
+        if extra:
+            logger.warning(f"[MODEL] Extra fields ignored: {extra}")
+        return values
+
+    @model_validator(mode="after")
+    def log_default_warnings(self):
+        if not getattr(self, "verbose", True):
+            return self
+        except_fields = ["transforms_data", "data_q", "verbose"]
+        provided = getattr(self, "__pydantic_fields_set__", set())
+        for name, field in self.model_fields.items():
+            if name in except_fields or name in provided:
+                continue
+            value = getattr(self, name)
+            if value == field.default:
+                logger.warning(f"[MODEL] Default value used for '{name}': {field.default}")
+        return self
 
 
 class BaseTrainingConfig(BaseModel):
     """Base configuration for model training."""
-    max_lr: float = Field(default=1e-3, gt=0)
+    max_lr: float = Field(default=1e-4, gt=0)
     warmup_epochs: int = Field(default=5, ge=0)
-    num_epochs: int = Field(default=100, ge=1)
-    patience: int = Field(default=20, ge=0)
-    batch_size: int = Field(default=32, ge=1)
+    num_epochs: int = Field(default=300, ge=1)
+    patience: int = Field(default=40, ge=0)
+    batch_size: int = Field(default=8, ge=1)
     num_gpus: int = Field(default=1, ge=0)
     num_nodes: int = Field(default=1, ge=0)
     save_every: int = Field(default=1, ge=1)
     output_dir: str = Field(default="train_results")
     plot_train: bool = Field(default=True)
+    num_workers: int = Field(default=4, ge=0)
     eta_min: float = Field(default=1e-15, ge=0)
+    min_delta: float = Field(default=1e-7, ge=0)
     use_loglog: bool = Field(default=True)
     num_samples: int = Field(default=10, ge=1)
     every_n_epochs: int = Field(default=10, ge=1)
@@ -53,6 +87,34 @@ class BaseTrainingConfig(BaseModel):
     test_indices_path: Optional[Union[str, Path]] = Field(
         default=None, description="Path to file with test data indices.")
 
+    verbose: bool = Field(default=True, description="If False, disables config warnings.")
+
+    @model_validator(mode="before")
+    def warn_extra_fields(cls, values):
+        verbose = values.get("verbose", True)
+        if not verbose:
+            return values
+
+        known_fields = set(cls.model_fields.keys())
+        extra = [k for k in values.keys() if k not in known_fields]
+        if extra:
+            logger.warning(f"[TRAINING] Extra fields ignored: {extra}")
+        return values
+
+    @model_validator(mode="after")
+    def log_default_warnings(self):
+        if not getattr(self, "verbose", True):
+            return self
+        except_fields = ["test_indices_path", "verbose"]
+        provided = getattr(self, "__pydantic_fields_set__", set())
+        for name, field in self.model_fields.items():
+            if name in except_fields or name in provided:
+                    continue
+            value = getattr(self, name)
+            if value == field.default:
+                logger.warning(f"[TRAINING] Default value used for '{name}': {field.default}")
+        return self
+
 class BaseDatasetConfig(BaseModel):
     """Base configuration for datasets."""
     hdf5_file: Union[str, Path] = Field(..., description="Path to the HDF5 dataset file.")
@@ -62,7 +124,35 @@ class BaseDatasetConfig(BaseModel):
         default=None, description="Filters applied to select specific metadata entries.")
     requested_metadata: Optional[list[str]] = Field(
         default=None, description="List of metadata keys to retrieve from the dataset.")
-    use_data_q: bool = Field(default=True, description="Use q-values from the dataset.")
+    use_data_q: bool = Field(default=False, description="Use q-values from the dataset.")
+
+    verbose: bool = Field(default=True, description="If False, disables config warnings.")
+
+    @model_validator(mode="before")
+    def warn_extra_fields(cls, values):
+        verbose = values.get("verbose", True)
+        if not verbose:
+            return values
+
+        known_fields = set(cls.model_fields.keys())
+        extra = [k for k in values.keys() if k not in known_fields]
+        if extra:
+            logger.warning(f"[DATASET] Extra fields ignored: {extra}")
+        return values
+
+    @model_validator(mode="after")
+    def log_default_warnings(self):
+        if not getattr(self, "verbose", True):
+            return self
+        except_fields = ["use_data_q", "verbose"]
+        provided = getattr(self, "__pydantic_fields_set__", set())
+        for name, field in self.model_fields.items():
+            if name in except_fields or name in provided:
+                    continue
+            value = getattr(self, name)
+            if value == field.default:
+                logger.warning(f"[DATASET] Default value used for '{name}': {field.default}")
+        return self
 
 
 # --------------------------------------------------------------------------
@@ -73,7 +163,7 @@ class VAEModelConfig(BaseModelConfig):
     """Configuration for a single-domain VAE."""
     vae_class: str = Field(..., description="Registered VAE architecture name.")
     args: Dict[str, Any] = Field(default_factory=dict, description="Arguments for submodel constructor.")
-    beta: float = Field(default=1e-6, ge=0.0, description="KL divergence scaling coefficient.")
+    beta: float = Field(default=1e-7, ge=0.0, description="KL divergence scaling coefficient.")
     data_q: Optional[Any] = None
 
 

@@ -4,7 +4,7 @@ import lightning.pytorch as pl
 import torch
 import torch.nn.functional as F
 
-from model.configs import VAEModelConfig, VAETrainingConfig, PairVAEModelConfig, PairVAETrainingConfig
+from src.model.configs import VAEModelConfig, VAETrainingConfig, PairVAEModelConfig, PairVAETrainingConfig
 from src.logging_utils import get_logger
 from src.model.pairvae.loss import BarlowTwinsLoss
 from src.model.pairvae.pairvae import PairVAE

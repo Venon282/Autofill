@@ -6,16 +6,15 @@ import argparse
 import os
 import sys
 from typing import Any
-
 import yaml
+
+from src.model.trainer import make_trainer
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.logging_utils import get_logger
 from src.model.grid_search import GridSearch
-from src.model.trainer import TrainPipeline
-from scripts.utils.config_validator import validate_config_and_files
-
+from scripts.utils.training_config_validator import check_config_integrity
 
 logger = get_logger(__name__)
 
@@ -33,7 +32,6 @@ TRANSFORM_OVERRIDES: dict[str, dict[str, Any]] = {
 
 def parse_args() -> argparse.Namespace:
     """Return the arguments accepted by the training script."""
-
     parser = argparse.ArgumentParser(description="Train a VAE or PairVAE model.")
     parser.add_argument("--mode", type=str, choices=["vae", "pair_vae"], help="Model family to train.")
     parser.add_argument("--gridsearch", action="store_true", default=False, help="Run hyper-parameter search instead of a single training run.")
@@ -41,12 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", type=str, default="model/VAE/vae_config_saxs.yaml", help="Path to the YAML configuration file.")
     parser.add_argument("--name", type=str, default=None, help="Optional run name overriding the config.")
     parser.add_argument("--hdf5_file", type=str, default=None, help="Override the dataset HDF5 file path.")
-    parser.add_argument(
-        "--conversion_dict_path",
-        type=str,
-        default=None,
-        help="Override the metadata conversion dictionary path.",
-    )
+    parser.add_argument("--conversion_dict_path", type=str, default=None, help="Override the metadata conversion dictionary path.")
     parser.add_argument("--technique", type=str, default=None, help="Filter the dataset to a given acquisition technique.")
     parser.add_argument("--material", type=str, default=None, help="Filter the dataset to a given material label.")
     parser.add_argument("--dry-run", action="store_true", default=False, help="Validate configuration and check file paths without starting training.")
@@ -54,23 +47,16 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
-    """Load configuration overrides and launch training or grid search."""
+def load_config(config_path: str) -> dict:
+    """Load a YAML configuration file."""
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"Configuration file not found: {config_path}")
+    with open(config_path, "r") as f:
+        return yaml.safe_load(f)
 
-    args = parse_args()
-    if not os.path.exists(args.config):
-        logger.error("Configuration file not found: %s", args.config)
-        sys.exit(1)
-    try:
-        with open(args.config, "r") as f:
-            config = yaml.safe_load(f)
-    except yaml.YAMLError as e:
-        logger.error("Error parsing YAML configuration: %s", e)
-        sys.exit(1)
-    except Exception as e:
-        logger.error("Error loading configuration file: %s", e)
-        sys.exit(1)
 
+def apply_overrides(config: dict, args: argparse.Namespace) -> dict:
+    """Apply command-line overrides to the configuration."""
     if args.name:
         config["run_name"] = args.name
     if args.hdf5_file:
@@ -88,29 +74,46 @@ def main() -> None:
     if args.spec:
         config["model"]["spec"] = args.spec
         logger.warning("Using model specification from argument: %s", args.spec)
-
     if args.technique and args.technique in TRANSFORM_OVERRIDES:
         config.setdefault("transforms_data", {}).update(TRANSFORM_OVERRIDES[args.technique])
+    return config
 
-    if not validate_config_and_files(config, args):
-        raise SystemExit("Configuration validation failed. Please fix the errors and try again.")
 
-    if not getattr(args, 'dry_run', False):
-        try:
-            if args.gridsearch:
-                logger.info("Starting grid search...")
-                grid_search = GridSearch(config)
-                grid_search.run()
-            else:
-                logger.info("Starting training...")
-                trainer = TrainPipeline(config, verbose=args.verbose)
-                trainer.train()
-        except KeyboardInterrupt:
-            logger.warning("Training interrupted by user")
-            sys.exit(1)
-        except Exception as e:
-            logger.exception("Training failed: %s", e)
-            sys.exit(1)
+def main() -> None:
+    """Load configuration overrides and launch training or grid search."""
+    args = parse_args()
+    try:
+        config = load_config(args.config)
+    except Exception as e:
+        logger.error("Failed to load configuration: %s", e)
+        sys.exit(1)
+
+    config = apply_overrides(config, args)
+
+    try:
+        check_config_integrity(config, verbose=args.dry_run)
+    except Exception as e:
+        logger.error("Configuration validation failed: %s", e)
+        sys.exit(1)
+
+    if args.dry_run:
+        logger.info("Dry run mode: configuration validated successfully.")
+        sys.exit(0)
+
+    try:
+        if args.gridsearch:
+            logger.info("Starting grid search...")
+            grid_search = GridSearch(config)
+            grid_search.run()
+        else:
+            pipeline = make_trainer(config, verbose=args.verbose)
+            pipeline.train()
+    except KeyboardInterrupt:
+        logger.warning("Training interrupted by user.")
+        sys.exit(1)
+    except Exception as e:
+        logger.exception("Training failed: %s", e)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

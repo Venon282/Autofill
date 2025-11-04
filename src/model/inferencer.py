@@ -5,6 +5,7 @@ from __future__ import annotations
 import abc
 import json
 import os
+from io import StringIO
 from typing import Dict, Optional
 
 import matplotlib
@@ -21,7 +22,9 @@ from src.dataset.transformations import Pipeline
 from src.model.pairvae.pl_pairvae import PlPairVAE
 from src.model.vae.pl_vae import PlVAE
 from src.logging_utils import get_logger
-
+import time
+import torch
+from tqdm import tqdm
 
 logger = get_logger(__name__)
 
@@ -149,25 +152,57 @@ class VAEInferencer(BaseInferencer):
         return self.model.get_input_dim()
 
     def infer_and_save(self) -> None:
+        total_start = time.time()
         loader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
+
         with torch.no_grad():
-            for batch in tqdm(loader, desc="Inference per sample"):
+            for batch_idx, batch in enumerate(tqdm(loader, desc="Inference per sample")):
+                t_batch_start = time.time()
+
+                # 1️⃣ Move to device
+                t0 = time.time()
                 batch = move_to_device(batch, self.device)
+                t1 = time.time()
+                print(f"[Batch {batch_idx}] move_to_device: {t1 - t0:.3f}s")
+
+                # 2️⃣ Model inference
+                t0 = time.time()
                 outputs = self.model(batch)
+                t1 = time.time()
+                print(f"[Batch {batch_idx}] model forward: {t1 - t0:.3f}s")
+
+                # 3️⃣ Post-processing (CPU conversion + inversion)
+                t0 = time.time()
                 y_pred = outputs["recon"]
-                q_pred = outputs['data_q']
+                q_pred = outputs["data_q"]
                 y_pred, q_pred = self.invert(y_pred.cpu().numpy(), q_pred.cpu().numpy())
+                t1 = time.time()
+                print(f"[Batch {batch_idx}] invert + numpy: {t1 - t0:.3f}s")
+
+                # 4️⃣ Metadata extraction
+                t0 = time.time()
                 metadata_batch = batch["metadata"]
+                technique = self.model.model_cfg.spec
+                if isinstance(technique, str):
+                    technique = [technique]
+                signal_name = "_".join(technique)
+                t1 = time.time()
+                print(f"[Batch {batch_idx}] metadata prep: {t1 - t0:.3f}s")
+
+                # 5️⃣ Sauvegarde par échantillon
+                t0 = time.time()
                 for i in range(len(y_pred)):
                     y_arr = y_pred[i]
                     q_arr = q_pred[i]
                     metadata = {k: metadata_batch[k][i] for k in metadata_batch}
-                    technique = self.model.model_cfg.spec
-                    if isinstance(technique, str):
-                        technique = [technique]
-                    signal_name = "_".join(technique)
                     y_arrs = {signal_name or "recon": y_arr}
                     self.save_pred(batch, i, q_arr, y_arrs, metadata)
+                t1 = time.time()
+                print(f"[Batch {batch_idx}] save_pred (all samples): {t1 - t0:.3f}s")
+
+                print(f"[Batch {batch_idx}] total: {time.time() - t_batch_start:.3f}s\n")
+
+        print(f"✅ Inference finished in {time.time() - total_start:.2f}s total")
 
     def compute_dataset(self, input_dim: Optional[int]) -> None:
         transforms_q = Pipeline(self.model.get_transformer_q())
