@@ -23,8 +23,7 @@ DEFAULT_LENGTH_DATA = 1000
 class HDF5Dataset(Dataset):
     """Dataset loader for single-spectrum experiments stored in HDF5 files."""
 
-    def __init__(self, hdf5_file, conversion_dict: Union[dict, str, Path] = None, metadata_filters=None,
-                 sample_frac=1, requested_metadata=None,
+    def __init__(self, hdf5_file, conversion_dict: Union[dict, str, Path] = None, metadata_filters=None, requested_metadata=None,
                  transformer_q=Pipeline(), transformer_y=Pipeline(),
                  use_data_q: bool = True):
         """
@@ -93,12 +92,6 @@ class HDF5Dataset(Dataset):
             self.conversion_dict = None
             self.filtered_indices = list(range(len(self.data_y)))
 
-        # --- Sampling fraction ---
-        self._validate_frac(sample_frac)
-        self.sample_frac = sample_frac
-        if 0 < sample_frac < 1:
-            self._apply_data_fraction(sample_frac)
-
         self._print_init_info()
 
         # --- Fit transformers ---
@@ -129,11 +122,6 @@ class HDF5Dataset(Dataset):
         if missing:
             logger.warning(f"Missing requested metadata columns: {missing}, available: {available}")
         return valid
-
-    def _validate_frac(self, sample_frac):
-        """Validate that sample fraction is in the (0,1] interval."""
-        if not (0 < sample_frac <= 1):
-            raise ValueError("Data fraction must be between 0 and 1")
 
     def _load_conversion_dict(self, conversion_dict: Union[dict, str, Path]):
         """Load JSON conversion dictionary for categorical metadata."""
@@ -166,11 +154,6 @@ class HDF5Dataset(Dataset):
 
             mask &= key_mask
         return np.where(mask)[0]
-
-    def _apply_data_fraction(self, sample_frac):
-        """Select a fraction of the filtered indices in sorted order."""
-        num_samples = int(len(self.filtered_indices) * sample_frac)
-        self.filtered_indices = self.filtered_indices[:num_samples]
 
     # -------------------------------------------------------------------------
     # PyTorch dataset interface

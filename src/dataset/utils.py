@@ -1,18 +1,18 @@
-"""Dataset helper utilities."""
-
+import random
 from torch.utils.data import Subset
 
-def build_subset(dataset, target_csv_indices):
+def build_subset(dataset, target_csv_indices, sample_frac: float = 1.0):
     """
     Crée un torch.utils.data.Subset contenant uniquement les entrées
     du dataset dont le champ "data_index" figure dans target_csv_indices.
+    Si sample_frac < 1.0, un échantillon aléatoire de cette fraction est conservé.
     """
-
-    # On crée une table de correspondance entre le data_index et l'indice interne du dataset
     idx_map = {dataset[i]["data_index"]: i for i in range(len(dataset))}
 
-    # On garde uniquement les indices internes correspondant aux data_index demandés
     subset_indices = [idx_map[csv_i] for csv_i in target_csv_indices if csv_i in idx_map]
 
-    # On crée le Subset PyTorch
+    if 0 < sample_frac < 1.0:
+        n_samples = max(1, int(len(subset_indices) * sample_frac))
+        subset_indices = random.sample(subset_indices, n_samples)
+
     return Subset(dataset, subset_indices)

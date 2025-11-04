@@ -1,15 +1,10 @@
 """Lightning module orchestrating the PairVAE training loop."""
 
-import math
-from typing import Optional
-
 import lightning.pytorch as pl
 import torch
 import torch.nn.functional as F
-from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-from src.model.pairvae.configs import PairVAEModelConfig, PairVAETrainingConfig
-from src.model.vae.configs import VAEModelConfig, VAETrainingConfig
+from model.configs import VAEModelConfig, VAETrainingConfig, PairVAEModelConfig, PairVAETrainingConfig
 from src.logging_utils import get_logger
 from src.model.pairvae.loss import BarlowTwinsLoss
 from src.model.pairvae.pairvae import PairVAE

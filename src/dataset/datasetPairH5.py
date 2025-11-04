@@ -21,8 +21,7 @@ logger = get_logger(__name__)
 class PairHDF5Dataset(Dataset):
     """Dataset wrapper for loading coupled SAXS/LES experiments."""
 
-    def __init__(self, hdf5_file, conversion_dict: Union[dict, str, Path], metadata_filters=None,
-                 sample_frac=1, requested_metadata=None,
+    def __init__(self, hdf5_file, conversion_dict: Union[dict, str, Path], metadata_filters=None, requested_metadata=None,
                  transformer_q_saxs=Pipeline(),
                  transformer_y_saxs=Pipeline(),
                  transformer_q_les=Pipeline(),
@@ -98,11 +97,6 @@ class PairHDF5Dataset(Dataset):
         self.metadata_filters = metadata_filters or {}
         self.filtered_indices = self._apply_metadata_filters()
 
-        self._validate_frac(sample_frac)
-        self.sample_frac = sample_frac
-        if 0 < sample_frac < 1:
-            self._apply_data_fraction(sample_frac)
-
         self.transformer_y_saxs.fit(self.data_y_saxs[self.filtered_indices])
         self.transformer_y_les.fit(self.data_y_les[self.filtered_indices])
         if self.use_data_q and self.data_q_saxs is not None and self.data_q_les is not None:
@@ -119,11 +113,6 @@ class PairHDF5Dataset(Dataset):
         if missing:
             warnings.warn(f"Missing requested metadata columns: {missing}")
         return valid
-
-    def _validate_frac(self, sample_frac):
-        """Validate data fraction parameter"""
-        if not (0 < sample_frac <= 1):
-            raise ValueError("Data fraction must be between 0 and 1")
 
     def _load_conversion_dict(self, conversion_dict: Union[dict, str, Path]):
         """Load JSON conversion dictionary for categorical metadata"""
@@ -157,11 +146,6 @@ class PairHDF5Dataset(Dataset):
                 key_mask = np.isin(data, allowed_values)
             mask &= key_mask
         return np.where(mask)[0]
-
-    def _apply_data_fraction(self, sample_frac):
-        """Select a fraction of the filtered indices in sorted order"""
-        num_samples = int(len(self.filtered_indices) * sample_frac)
-        self.filtered_indices = self.filtered_indices[:num_samples]
 
     def __len__(self):
         """Return the number of filtered SAXS/LES sample pairs."""

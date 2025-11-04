@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from pydantic import ValidationError
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-from src.model.vae.configs import VAEModelConfig, VAETrainingConfig
+from model.configs import VAEModelConfig, VAETrainingConfig
 from src.logging_utils import get_logger
 from src.model.vae.submodel.registry import *
 
