@@ -153,20 +153,6 @@ class BaseTrainPipeline:
         Save the complete resolved configuration (model, training, dataset)
         to YAML and JSON files.
         """
-        def serialize_config(obj):
-            """Convert Pydantic models and numpy arrays to serializable formats."""
-            if hasattr(obj, 'model_dump'):
-                # Pydantic v2
-                return obj.model_dump(mode='python')
-            elif hasattr(obj, 'dict'):
-                # Pydantic v1
-                return obj.dict()
-            elif isinstance(obj, np.ndarray):
-                return obj.tolist()
-            elif isinstance(obj, Enum):
-                return obj.value
-            return obj
-
         cfg = {
             "experiment_name": self.experiment_name,
             "run_name": self.run_name,
@@ -226,8 +212,13 @@ class SingleVAEPipeline(BaseTrainPipeline):
         self.model_cfg.data_q = dataset.get_data_q()
         self.model_cfg.transforms_data = dataset.transforms_to_dict()
         model = PlVAE(model_config=self.model_cfg, train_config=self.train_cfg)
-        if hasattr(self.model, "set_global_config"):
-            self.model.set_global_config({})
+        model.set_global_config(
+                {"experiment_name": self.experiment_name,
+            "run_name": self.run_name,
+            "model": serialize_config(self.model_cfg),
+            "training": serialize_config(self.train_cfg),
+            "dataset": serialize_config(self.dataset_cfg),
+            "mlflow_uri": self.mlflow_uri,})
         curves = {"recon": {"truth_key": "data_y", "pred_keys": ["recon"], "use_loglog": self.train_cfg.use_loglog}}
         callbacks = [InferencePlotCallback(curves_config=curves, output_dir=self.log_path / "inference_results")]
         self.model, self.dataset, self.extra_callback_list = model, dataset, callbacks
@@ -326,3 +317,25 @@ def  make_trainer(config: dict, verbose=False):
     except Exception as e:
         raise RuntimeError(f"Unexpected error while creating pipeline: {e}")
 #endregion
+
+def serialize_config(obj):
+    """Recursively convert Pydantic models, enums, and numpy arrays to serializable formats."""
+    if isinstance(obj, Enum):
+        return obj.value
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif hasattr(obj, 'model_dump'):
+        # Pydantic v2
+        data = obj.model_dump(mode='python')
+        return serialize_config(data)
+    elif hasattr(obj, 'dict'):
+        # Pydantic v1
+        data = obj.dict()
+        return serialize_config(data)
+    elif isinstance(obj, dict):
+        return {k: serialize_config(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [serialize_config(item) for item in obj]
+    elif isinstance(obj, Path):
+        return str(obj)
+    return obj

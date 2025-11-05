@@ -54,11 +54,11 @@ class HDF5Dataset(Dataset):
         except Exception as e:
             raise ValueError(f"Error loading 'data_q' or 'data_wavelength' from HDF5 file: {e}")
 
-            first_q = self.data_q[0]
-            for i in tqdm(range(len(self.data_q)), desc="Sanity checking H5", leave=False):
-                if not np.array_equal(self.data_q[i], first_q):
-                    raise AssertionError("All data_q/data_wavelength arrays must be identical")
-            self.data_q = first_q
+        first_q = self.data_q[0]
+        for i in tqdm(range(len(self.data_q)), desc="Sanity checking H5", leave=False):
+            if not np.array_equal(self.data_q[i], first_q):
+                raise AssertionError("All data_q/data_wavelength arrays must be identical")
+        self.data_q = first_q
 
         # --- Load intensity data ---
         self.data_y = self.hdf['data_y']
@@ -179,11 +179,8 @@ class HDF5Dataset(Dataset):
         data_y_transformed = self.transformer_y.transform(data_y)
         data_y_transformed = torch.as_tensor(data_y_transformed, dtype=torch.float32).unsqueeze(0)
 
-        if self.use_data_q and self.data_q is not None:
-            data_q = self.transformer_q.transform(self.data_q)
-            data_q = torch.as_tensor(data_q, dtype=torch.float32).unsqueeze(0)
-        else:
-            data_q = None
+        data_q = self.transformer_q.transform(self.data_q)
+        data_q = torch.as_tensor(data_q, dtype=torch.float32).unsqueeze(0)
 
         batch = {
             "data_y": data_y_transformed,
@@ -193,10 +190,7 @@ class HDF5Dataset(Dataset):
             "data_index": original_idx
         }
 
-        if self.use_data_q:
-            batch["data_q"] = data_q
-        else:
-            batch["data_q"] = None
+        batch["data_q"] = data_q
 
         return batch
 
