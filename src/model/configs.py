@@ -6,8 +6,6 @@ from src.logging_utils import get_logger
 
 logger = get_logger(__name__, custom_name="CONFIG")
 
-
-
 class ModelType(str, Enum):
     """Available model types."""
     VAE = "vae"
@@ -72,6 +70,7 @@ class BaseTrainingConfig(BaseModel):
     save_every: int = Field(default=1, ge=1)
     output_dir: str = Field(default="train_results")
     plot_train: bool = Field(default=True)
+    plot_val: bool = Field(default=True)
     num_workers: int = Field(default=4, ge=0)
     eta_min: float = Field(default=1e-15, ge=0)
     min_delta: float = Field(default=1e-7, ge=0)
@@ -112,7 +111,10 @@ class BaseTrainingConfig(BaseModel):
                     continue
             value = getattr(self, name)
             if value == field.default:
-                logger.warning(f"[TRAINING] Default value used for '{name}': {field.default}")
+                if name == "train_indices_path" or name == "val_indices_path":
+                    logger.info(f"[TRAINING] No path provided for '{name}'; using full dataset and 80/20 split (train/val).")
+                else:
+                    logger.warning(f"[TRAINING] Default value used for '{name}': {field.default}")
         return self
 
 class BaseDatasetConfig(BaseModel):

@@ -12,6 +12,8 @@ import json
 from pydantic.json import pydantic_encoder
 from torch.utils.data import DataLoader, random_split
 from uniqpath import unique_path
+
+from model.callbacks.metrics_callback import MAEMetricCallback
 from src.model.configs import (
     VAETrainingConfig, VAEModelConfig, HDF5DatasetConfig,
     PairVAEModelConfig, PairVAETrainingConfig, PairHDF5DatasetConfig,
@@ -89,6 +91,10 @@ class BaseTrainPipeline:
                 name=self.experiment_name,
                 version=self.run_name,
             )
+
+        logger_obj.log_hyperparams(self.train_cfg.model_dump(exclude={"verbose"}))
+        logger_obj.log_hyperparams(self.model_cfg.model_dump(exclude={"transforms_data", "data_q", "verbose"}))
+        logger_obj.log_hyperparams(self.dataset_cfg.model_dump(exclude={"transforms_data", "verbose"}))
 
         callbacks = [early_stop, checkpoint] + self.extra_callback_list
         strategy = "ddp" if torch.cuda.device_count() > 1 else "auto"
@@ -190,6 +196,22 @@ class BaseTrainPipeline:
         if self.test_dataloader:
             self.trainer.test(self.model, self.test_dataloader, ckpt_path="best")
         return self.log_path
+
+    def _init_callbacks(self, curves: dict):
+        callbacks = []
+        if self.train_cfg.plot_train or self.train_cfg.plot_val:
+            callbacks.append(
+                InferencePlotCallback(
+                    curves_config=curves,
+                    num_samples=self.train_cfg.num_samples,
+                    every_n_epochs=self.train_cfg.every_n_epochs,
+                    plot_on_train=self.train_cfg.plot_train,
+                    plot_on_val=self.train_cfg.plot_val,
+                    output_dir=self.log_path / "inference_results",
+                )
+            )
+        callbacks.append(MAEMetricCallback())
+        return callbacks
 #endregion
 
 
@@ -220,8 +242,8 @@ class SingleVAEPipeline(BaseTrainPipeline):
             "dataset": serialize_config(self.dataset_cfg),
             "mlflow_uri": self.mlflow_uri,})
         curves = {"recon": {"truth_key": "data_y", "pred_keys": ["recon"], "use_loglog": self.train_cfg.use_loglog}}
-        callbacks = [InferencePlotCallback(curves_config=curves, output_dir=self.log_path / "inference_results")]
-        self.model, self.dataset, self.extra_callback_list = model, dataset, callbacks
+
+        self.model, self.dataset, self.extra_callback_list = model, dataset, self._init_callbacks(curves)
 
     def _resolve_index_position(self):
         if self.model_cfg.spec == ModelSpec.SAXS:
@@ -255,8 +277,7 @@ class PairVAEPipeline(BaseTrainPipeline):
             "saxs": {"truth_key": "data_y_saxs", "pred_keys": ["recon_saxs", "recon_les2saxs"], "use_loglog": True},
             "les": {"truth_key": "data_y_les", "pred_keys": ["recon_les", "recon_saxs2les"]},
         }
-        callbacks = [InferencePlotCallback(curves_config=curves, output_dir=self.log_path / "inference_results")]
-        self.model, self.dataset, self.extra_callback_list = model, dataset, callbacks
+        self.model, self.dataset, self.extra_callback_list = model, dataset, self._init_callbacks(curves)
 
     def _resolve_index_position(self):
         return 0

@@ -87,7 +87,6 @@ class PlPairVAE(pl.LightningModule):
         self.log("train_loss", loss_total, on_step=True, on_epoch=True, prog_bar=True)
         self._log_details("train", details)
 
-        # 🔹 Log LR à chaque epoch
         current_lr = self.trainer.optimizers[0].param_groups[0]["lr"]
         self.log("lr", current_lr, on_epoch=True)
 

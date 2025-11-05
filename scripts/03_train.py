@@ -8,10 +8,9 @@ import sys
 from typing import Any
 import yaml
 
-from src.model.trainer import make_trainer
-
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from src.model.trainer import make_trainer
 from src.logging_utils import get_logger
 from src.model.grid_search import GridSearch
 from scripts.utils.training_config_validator import check_config_integrity
