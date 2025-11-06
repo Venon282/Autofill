@@ -25,7 +25,6 @@ class ModelSpec(str, Enum):
 class BaseModelConfig(BaseModel):
     """Base configuration for a model."""
     type: ModelType = Field(..., description="Model type identifier.")
-    spec: ModelSpec  = Field(..., description="Model specification.")
     transforms_data: Optional[Dict[str, Any]] = Field(
         default=None, description="Optional data transformation config."
     )
@@ -47,7 +46,7 @@ class BaseModelConfig(BaseModel):
     def log_default_warnings(self):
         if not getattr(self, "verbose", True):
             return self
-        except_fields = ["transforms_data", "data_q", "verbose"]
+        except_fields = ["transforms_data", "data_q", "verbose", "freeze_subvae"]
         provided = getattr(self, "__pydantic_fields_set__", set())
         for name, field in self.model_fields.items():
             if name in except_fields or name in provided:
@@ -78,6 +77,7 @@ class BaseTrainingConfig(BaseModel):
     num_samples: int = Field(default=10, ge=1)
     every_n_epochs: int = Field(default=10, ge=1)
     weighted_loss: bool = Field(default=False)
+    sample_frac: float = Field(default=1.0, ge=0.0, le=1.0)
     weighted_loss_limit_index: Optional[int] = None
     train_indices_path: Optional[Union[str, Path]] = Field(
         default=None, description="Path to file with training data indices.")
@@ -104,7 +104,7 @@ class BaseTrainingConfig(BaseModel):
     def log_default_warnings(self):
         if not getattr(self, "verbose", True):
             return self
-        except_fields = ["test_indices_path", "verbose"]
+        except_fields = ["test_indices_path", "verbose", "num_nodes", "plot_train", "plot_val", "save_every", "num_samples", "every_n_epochs"]
         provided = getattr(self, "__pydantic_fields_set__", set())
         for name, field in self.model_fields.items():
             if name in except_fields or name in provided:
@@ -163,6 +163,7 @@ class BaseDatasetConfig(BaseModel):
 
 class VAEModelConfig(BaseModelConfig):
     """Configuration for a single-domain VAE."""
+    spec: ModelSpec  = Field(..., description="Model specification.")
     vae_class: str = Field(..., description="Registered VAE architecture name.")
     args: Dict[str, Any] = Field(default_factory=dict, description="Arguments for submodel constructor.")
     beta: float = Field(default=1e-7, ge=0.0, description="KL divergence scaling coefficient.")
@@ -171,7 +172,6 @@ class VAEModelConfig(BaseModelConfig):
 
 class VAETrainingConfig(BaseTrainingConfig):
     """Training configuration for single-domain VAE."""
-    sample_frac: float = Field(default=1.0, ge=0.0, le=1.0)
 
 
 class HDF5DatasetConfig(BaseDatasetConfig):
@@ -187,10 +187,8 @@ class HDF5DatasetConfig(BaseDatasetConfig):
 
 class PairVAEModelConfig(BaseModelConfig):
     """Configuration for paired-domain VAE (SAXS–LES)."""
-    spec: ModelSpec = Field(default=ModelSpec.PAIR)
     ckpt_path_saxs: Optional[str] = None
     ckpt_path_les: Optional[str] = None
-    lr: float = Field(default=1e-4, ge=0)
     freeze_subvae: bool = Field(default=False)
 
 

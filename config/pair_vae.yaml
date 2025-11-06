@@ -4,19 +4,21 @@ dataset:
   conversion_dict: 
   hdf5_file: "DATA/pair_all_data.hdf5"
   metadata_filters:
-  requested_metadata: 
-  sample_frac: 1
+  requested_metadata:
 
 training:
   output_dir: "runs/"
   num_gpus: 1
-  num_epochs: 1
+  num_epochs: 300
   warmup_epochs: 5
   patience: 20
   use_loglog: false
 
   batch_size: 8
   num_workers: 1
+  min_delta: 0.0000001
+  num_samples: 8
+  num_nodes: 1
 
   weighted_loss: False
   weighted_loss_limit_index: 400
@@ -32,14 +34,14 @@ training:
 
   T_max: 25
   eta_min: 1.0e-15
-  array_train_indices: DATA/train_pairs_saxs_les.npy
-  array_val_indices: DATA/val_pairs_saxs_les.npy
-  array_test_indices: DATA/test_pairs_saxs_les.npy
+  train_indices_path: DATA/train_pairs_saxs_les.npy
+  val_indices_path: DATA/val_pairs_saxs_les.npy
+  test_indices_path: DATA/test_pairs_saxs_les.npy
 
 model:
   type: pair_vae
-  ckpt_path_les: DATA/best_saxs.ckpt
-  ckpt_path_saxs: DATA/best_saxs.ckpt
+  ckpt_path_les: runs/AUTOFILL_LES/les_cylinder_ag_1/best.ckpt
+  ckpt_path_saxs: runs/SAXS/saxs_cylinder_ag_8/best.ckpt
 
 param_grid:
   training.weight_latent_similarity: [0.005, 0.001]

@@ -4,7 +4,7 @@ import lightning.pytorch as pl
 import torch
 import torch.nn.functional as F
 
-from src.model.configs import VAEModelConfig, VAETrainingConfig, PairVAEModelConfig, PairVAETrainingConfig
+from src.model.configs import VAEModelConfig, VAETrainingConfig, PairVAEModelConfig, PairVAETrainingConfig, ModelSpec
 from src.logging_utils import get_logger
 from src.model.pairvae.loss import BarlowTwinsLoss
 from src.model.pairvae.pairvae import PairVAE
@@ -22,6 +22,8 @@ class PlPairVAE(pl.LightningModule):
         train_config: PairVAETrainingConfig,
     ):
         super().__init__()
+
+        self.spec = ModelSpec.PAIR
         self.model_cfg = model_config
         self.train_cfg = train_config
 
@@ -241,7 +243,11 @@ class PlPairVAE(pl.LightningModule):
         checkpoint["pairvae_model_config"] = self.model_cfg.model_dump()
         checkpoint["pairvae_train_config"] = self.train_cfg.model_dump()
         checkpoint["state_dict"] = self.state_dict()
-        checkpoint["global_config"] = self.global_config
+        if hasattr(self, 'global_config'):
+            checkpoint["global_config"] = self.global_config
+        else:
+            checkpoint["global_config"] = None
+            logger.warning("No global_config found in PlPairVAE during checkpoint saving.")
 
         def _extract_vae_info(vae):
             return {

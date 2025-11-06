@@ -64,14 +64,17 @@ class PairVAE(nn.Module):
         return getattr(obj, name, default)
 
     def check_models_compatible(self, raise_on_mismatch: bool = True) -> Tuple[bool, str]:
-        """Vérifie que les deux sous-modèles partagent des dimensions clés."""
+        """
+        Check if the two VAE models have compatible architectures.
+        Returns (is_compatible, message).
+        """
         saxs_model = self._get_attr_safe(self.vae_saxs, "model", None)
         les_model = self._get_attr_safe(self.vae_les, "model", None)
         if saxs_model is None or les_model is None:
             return True, "Models are None."
 
         if type(saxs_model) is not type(les_model):
-            msg = f"Classes différentes: {type(saxs_model).__name__} != {type(les_model).__name__}"
+            msg = f"Incompatible model types: {type(saxs_model)} != {type(les_model)}"
             if raise_on_mismatch:
                 raise AssertionError(msg)
             return False, msg
@@ -83,7 +86,7 @@ class PairVAE(nn.Module):
             if self._get_attr_safe(saxs_model, k, None) != self._get_attr_safe(les_model, k, None)
         ]
         if diffs:
-            msg = "Incompatibilité d'architecture: " + "; ".join(diffs)
+            msg = "Incompatible args" + "; ".join(diffs)
             if raise_on_mismatch:
                 raise AssertionError(msg)
             return False, msg

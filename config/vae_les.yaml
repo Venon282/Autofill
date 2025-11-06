@@ -7,19 +7,19 @@ dataset:
   metadata_filters:
   requested_metadata:
   sample_frac: 1
-transforms_data:
-  y:
-    PreprocessingLES:
-      pad_size: 1000
-  q:
-    PreprocessingQ:
-      pad_size: 1000
+  transforms_data:
+    y:
+      PreprocessingLES:
+        pad_size: 1000
+    q:
+      PreprocessingQ:
+        pad_size: 1000
 
 training:
   output_dir: "runs/"
-  array_train_indices: DATA/train_pairs_saxs_les.npy
-  array_val_indices: DATA/val_pairs_saxs_les.npy
-  array_test_indices: DATA/test_pairs_saxs_les.npy
+  train_indices_path: DATA/train_pairs_saxs_les.npy
+  val_indices_path: DATA/val_pairs_saxs_les.npy
+  test_indices_path: DATA/test_pairs_saxs_les.npy
   weighted_loss : False
   weighted_loss_limit_index: 
   T_max: 100
@@ -36,7 +36,7 @@ training:
 
 
 model:
-  vae_class: ResVAEBN
+  vae_class: ResVAE
   type: vae
   spec: les
   args:

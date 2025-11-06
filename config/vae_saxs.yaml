@@ -6,50 +6,49 @@ dataset:
   hdf5_file: DATA/cylinder_saxs_library_no_noise_meta_diameter_metric.h5
   metadata_filters:
   requested_metadata:
-  sample_frac: 1.0
-transforms_data:
-  y:
-    PreprocessingSAXS:
-      pad_size: 1000
-  q:
-    PreprocessingQ:
-      pad_size: 1000
+  transforms_data:
+    y:
+      PreprocessingSAXS:
+        pad_size: 1000
+    q:
+      PreprocessingQ:
+        pad_size: 1000
 
 training:
   output_dir: "runs/"
-  array_train_indices: DATA/train_pairs_saxs_les.npy
-  array_val_indices: DATA/val_pairs_saxs_les.npy
-  array_test_indices: DATA/test_pairs_saxs_les.npy
-  weighted_loss : True
-  weighted_loss_limit_index: 300
-  T_max: 100
+  train_indices_path: DATA/train_pairs_saxs_les.npy
+  val_indices_path: DATA/val_pairs_saxs_les.npy
+  test_indices_path: DATA/test_pairs_saxs_les.npy
+  weighted_loss: False
+  weighted_loss_limit_index:
   batch_size: 8
-  beta: 1.0e-06
-  eta_min: 1.0e-10
+  eta_min: 1.0e-15
   max_lr: 1.0e-04
   num_epochs: 300
   num_gpus: 1
   num_nodes: 1
+  num_workers: 1
   patience: 40
   use_loglog: true
-  min_delta: 0.00001
-  plot_train: true
-  save_every: 1
+  min_delta: 0.0000001
+  sample_frac: 1
+  beta: 1.0e-7
 
 model:
-  vae_class: ResVAEBN
   type: vae
   spec: saxs
+  vae_class: ResVAE
+  beta: 1.0e-7
   args:
     in_channels: 1
     output_channels: 1
-    dilation: 1
     input_dim: 1000
     latent_dim: 64
+    use_sigmoid: False
     down_channels: [8, 16, 32, 64, 128, 256, 512]
     up_channels: [ 512, 256, 128, 64, 32, 16, 8]
 
 
 param_grid:
-  model.args.latent_dim: [ 128, 64 ]    
-  training.beta: [ 1.0e-03, 1.0e-04, 1.0e-05, 1.0e-06 ]    
+  model.args.latent_dim: [ 128, 64 ]
+  training.beta: [ 1.0e-03, 1.0e-04, 1.0e-05, 1.0e-06 ]

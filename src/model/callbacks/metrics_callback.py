@@ -15,9 +15,7 @@ from sasmodels.core import load_model
 from sasmodels.data import empty_data1D
 from sasmodels.direct_model import DirectModel
 
-
 TensorBatch = Any
-
 
 def _first_dataloader(dataloaders: Any) -> Any:
     """Return the first dataloader from a Lightning ``dataloaders`` attribute."""
@@ -25,7 +23,6 @@ def _first_dataloader(dataloaders: Any) -> Any:
     if isinstance(dataloaders, (list, tuple)):
         return dataloaders[0]
     return dataloaders
-
 
 def move_to_device(batch: TensorBatch, device: torch.device) -> TensorBatch:
     """Recursively move tensors nested inside dicts, lists, or tuples to ``device``."""
@@ -39,7 +36,6 @@ def move_to_device(batch: TensorBatch, device: torch.device) -> TensorBatch:
     if isinstance(batch, tuple):
         return tuple(move_to_device(v, device) for v in batch)
     return batch
-
 
 class MAEMetricCallback(Callback):
     """Compute and log per-reconstruction mean absolute errors on validation batches."""

@@ -211,7 +211,8 @@ class BaseTrainPipeline:
                     output_dir=self.log_path / "inference_results",
                 )
             )
-        callbacks.append(MAEMetricCallback())
+        if self.model_cfg.type == ModelType.VAE.value:
+            callbacks.append(MAEMetricCallback())
         return callbacks
 #endregion
 
@@ -274,6 +275,13 @@ class PairVAEPipeline(BaseTrainPipeline):
             transformer_y_les=Pipeline(transform_les["y"]),
             use_data_q=self.dataset_cfg.use_data_q,
         )
+        model.set_global_config(
+                {"experiment_name": self.experiment_name,
+            "run_name": self.run_name,
+            "model": serialize_config(self.model_cfg),
+            "training": serialize_config(self.train_cfg),
+            "dataset": serialize_config(self.dataset_cfg),
+            "mlflow_uri": self.mlflow_uri,})
         curves = {
             "saxs": {"truth_key": "data_y_saxs", "pred_keys": ["recon_saxs", "recon_les2saxs"], "use_loglog": True},
             "les": {"truth_key": "data_y_les", "pred_keys": ["recon_les", "recon_saxs2les"]},

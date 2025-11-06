@@ -68,7 +68,7 @@ class PlVAE(pl.LightningModule):
         # })
 
         # Initialisation des poids ici
-        self.init_weights()
+        # self.init_weights()
 
     def init_weights(self):
         for m in self.model.modules():
@@ -222,7 +222,11 @@ class PlVAE(pl.LightningModule):
         checkpoint["model_config"] = self.model_cfg.model_dump()
         checkpoint["train_config"] = self.train_cfg.model_dump()
         checkpoint["state_dict"] = self.state_dict()
-        checkpoint["global_config"] = self.global_config
+        if hasattr(self, 'global_config'):
+            checkpoint["global_config"] = self.global_config
+        else:
+            checkpoint["global_config"] = None
+            logger.warning("No global_config found in PlVAE during checkpoint saving.")
 
     def on_load_checkpoint(self, checkpoint):
         """Rebuild model and configuration from saved checkpoint, with clearer error messages."""
@@ -262,7 +266,10 @@ class PlVAE(pl.LightningModule):
         self.model_cfg = model_cfg
         self.train_cfg = train_cfg
         self.beta = model_cfg.beta
-        self.set_global_config(checkpoint['global_config'])
+        if 'global_config' in checkpoint and checkpoint['global_config'] is not None:
+            self.set_global_config(checkpoint['global_config'])
+        else:
+            logger.warning("No global_config found in checkpoint during loading.")
         assert model_cfg.data_q is not None, "data_q must be defined in the checkpoint's model_config."
         self.data_q = torch.tensor(model_cfg.data_q, dtype=torch.float32)
 
