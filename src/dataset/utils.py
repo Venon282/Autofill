@@ -7,7 +7,7 @@ def build_subset(dataset, target_csv_indices, sample_frac: float = 1.0):
     du dataset dont le champ "data_index" figure dans target_csv_indices.
     Si sample_frac < 1.0, un échantillon aléatoire de cette fraction est conservé.
     """
-    idx_map = {dataset[i]["data_index"]: i for i in range(len(dataset))}
+    idx_map = {dataset.filtered_indices[i]: i for i in range(len(dataset))}
 
     subset_indices = [idx_map[csv_i] for csv_i in target_csv_indices if csv_i in idx_map]
 

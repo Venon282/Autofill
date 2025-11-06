@@ -13,7 +13,7 @@ from pydantic.json import pydantic_encoder
 from torch.utils.data import DataLoader, random_split
 from uniqpath import unique_path
 
-from model.callbacks.metrics_callback import MAEMetricCallback
+from src.model.callbacks.metrics_callback import MAEMetricCallback
 from src.model.configs import (
     VAETrainingConfig, VAEModelConfig, HDF5DatasetConfig,
     PairVAEModelConfig, PairVAETrainingConfig, PairHDF5DatasetConfig,
@@ -35,7 +35,7 @@ torch.set_float32_matmul_precision("high")
 class BaseTrainPipeline:
     """Base pipeline handling shared logic for model training."""
 
-    def __init__(self, model_cfg, train_cfg, dataset_cfg, *,run_name="run" , verbose=False, experiment_name="train_exp", mlflow_uri=None):
+    def __init__(self, model_cfg, train_cfg, dataset_cfg, run_name="run" , verbose=False, experiment_name="train_exp", mlflow_uri=None):
         self.model_cfg = model_cfg
         self.train_cfg = train_cfg
         self.dataset_cfg = dataset_cfg
@@ -111,6 +111,7 @@ class BaseTrainPipeline:
             callbacks=callbacks,
             logger=logger_obj,
             enable_progress_bar=True,
+            precision="32",
         )
 
     def _create_data_loaders(self):

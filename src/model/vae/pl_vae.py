@@ -2,9 +2,10 @@
 
 import lightning.pytorch as pl
 import torch
+from torch import nn
 import torch.nn.functional as F
-from pydantic import ValidationError
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+from pydantic import ValidationError
 
 from src.model.configs import VAEModelConfig, VAETrainingConfig
 from src.logging_utils import get_logger
@@ -65,6 +66,25 @@ class PlVAE(pl.LightningModule):
         #     "model_config": model_config.model_dump(),
         #     "train_config": train_config.model_dump(),
         # })
+
+        # Initialisation des poids ici
+        self.init_weights()
+
+    def init_weights(self):
+        for m in self.model.modules():
+            if isinstance(m, (nn.Conv1d, nn.ConvTranspose1d, nn.Linear)):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+                    
+        self.log_init_summary()
+
+    def log_init_summary(self):
+        total_params = sum(p.numel() for p in self.model.parameters())
+        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+        print(f"✅ Poids initialisés pour {self.model.__class__.__name__}")
+        print(f"   - Paramètres totaux : {total_params:,}")
+        print(f"   - Paramètres entraînables : {trainable_params:,}")
 
     def safe_check_config(self, model_config: VAEModelConfig, train_config: VAETrainingConfig) -> tuple[
         VAEModelConfig, VAETrainingConfig]:
@@ -153,7 +173,7 @@ class PlVAE(pl.LightningModule):
             mode="min",
             threshold=1e-3,
             factor=0.1,
-            patience=5,
+            patience=3,
             min_lr=self.train_cfg.eta_min,
         )
         return {
