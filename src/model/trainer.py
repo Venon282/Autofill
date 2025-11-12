@@ -173,11 +173,20 @@ class BaseTrainPipeline:
         with path.open("w", encoding="utf-8") as f:
             yaml.safe_dump(cfg, f, sort_keys=False, allow_unicode=True)
 
+        if hasattr(self.trainer.logger, 'experiment') and hasattr(self.trainer.logger.experiment, 'log_artifact'):
+            self.trainer.logger.experiment.log_artifact(
+                local_path=str(path),
+                run_id=self.trainer.logger.run_id
+            )
+
         json_path = path.with_suffix(".json")
         with json_path.open("w", encoding="utf-8") as jf:
             json.dump(cfg, jf, indent=2, ensure_ascii=False, default=str)
 
         logger.info("Configuration saved to %s and %s", path, json_path)
+
+        np.save(self.log_path / 'train_indices.npy', self.training_loader.dataset.indices)
+        np.save(self.log_path / 'val_indices.npy', self.validation_loader.dataset.indices)
         return path
     # endregion
 
