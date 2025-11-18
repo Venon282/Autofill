@@ -170,23 +170,37 @@ class BaseTrainPipeline:
         }
 
         path = self.log_path / filename
+        np.save(self.log_path / 'train_indices.npy', self.training_loader.dataset.indices)
+        np.save(self.log_path / 'val_indices.npy', self.validation_loader.dataset.indices)
+        if self.test_dataloader is not None:
+            np.save(self.log_path / 'test_indices.npy', self.test_dataloader.dataset.indices)
         with path.open("w", encoding="utf-8") as f:
             yaml.safe_dump(cfg, f, sort_keys=False, allow_unicode=True)
 
         if hasattr(self.trainer.logger, 'experiment') and hasattr(self.trainer.logger.experiment, 'log_artifact'):
             self.trainer.logger.experiment.log_artifact(
+                local_path=str(self.log_path / 'train_indices.npy'),
+                run_id=self.trainer.logger.run_id
+            )
+            self.trainer.logger.experiment.log_artifact(
+                local_path=str(self.log_path / 'val_indices.npy'),
+                run_id=self.trainer.logger.run_id
+            )
+            self.trainer.logger.experiment.log_artifact(
                 local_path=str(path),
                 run_id=self.trainer.logger.run_id
             )
+            if self.test_dataloader is not None:
+                self.trainer.logger.experiment.log_artifact(
+                    local_path=str(self.log_path / 'test_indices.npy'),
+                    run_id=self.trainer.logger.run_id
+                )
 
         json_path = path.with_suffix(".json")
         with json_path.open("w", encoding="utf-8") as jf:
             json.dump(cfg, jf, indent=2, ensure_ascii=False, default=str)
 
         logger.info("Configuration saved to %s and %s", path, json_path)
-
-        np.save(self.log_path / 'train_indices.npy', self.training_loader.dataset.indices)
-        np.save(self.log_path / 'val_indices.npy', self.validation_loader.dataset.indices)
         return path
     # endregion
 
@@ -270,7 +284,10 @@ class PairVAEPipeline(BaseTrainPipeline):
     """Training pipeline for paired-domain VAE."""
 
     def _initialize_components(self):
-        model = PlPairVAE(model_config=self.model_cfg, train_config=self.train_cfg)
+        model = PlPairVAE.from_pretrained_subvaes(
+            model_config=self.model_cfg,
+            train_config=self.train_cfg,
+        )
         transform_les = model.model.vae_les.get_transformer()
         transform_saxs = model.model.vae_saxs.get_transformer()
         dataset = PairHDF5Dataset(
@@ -303,7 +320,7 @@ class PairVAEPipeline(BaseTrainPipeline):
 
 
 #region Pipeline Factory
-def  make_trainer(config: dict, verbose=False):
+def make_trainer(config: dict, verbose=False):
     """Factory to create the appropriate training pipeline."""
 
     required_keys = ["model", "training", "dataset", "experiment_name"]

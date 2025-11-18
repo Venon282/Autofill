@@ -81,6 +81,8 @@ class PairHDF5Dataset(Dataset):
         self.transformer_q_les = _ensure_pipeline(transformer_q_les)
         self.transformer_y_les = _ensure_pipeline(transformer_y_les)
 
+        logger.info(f"Available columns in HDF5 file: {list(self.hdf.keys())}")
+
         all_metadata_cols = [col for col in self.hdf.keys() if col not in
                              ['data_q_saxs', 'data_y_saxs', 'data_q_les', 'data_y_les', 'len']]
         self.metadata_datasets = {col: self.hdf[col] for col in all_metadata_cols}
@@ -231,3 +233,4 @@ def _ensure_pipeline(transformer) -> Pipeline:
         return Pipeline(transformer)
     except Exception as e:
         raise ValueError(f"Invalid {transformer}: {e}")
+
