@@ -85,13 +85,14 @@ class BaseTrainingConfig(BaseModel):
         default=None, description="Path to file with validation data indices.")
     test_indices_path: Optional[Union[str, Path]] = Field(
         default=None, description="Path to file with test data indices.")
-
+    validate_config: bool = True
     verbose: bool = Field(default=True, description="If False, disables config warnings.")
 
     @model_validator(mode="before")
     def warn_extra_fields(cls, values):
-        verbose = values.get("verbose", True)
-        if not verbose:
+        if not values.get("validate_config", True):
+            return values
+        if not values.get("verbose", True):
             return values
 
         known_fields = set(cls.model_fields.keys())
@@ -102,9 +103,9 @@ class BaseTrainingConfig(BaseModel):
 
     @model_validator(mode="after")
     def log_default_warnings(self):
-        if not getattr(self, "verbose", True):
+        if not self.validate_config or not self.verbose:
             return self
-        except_fields = ["test_indices_path", "verbose", "num_nodes", "plot_train", "plot_val", "save_every", "num_samples", "every_n_epochs"]
+        except_fields = ["test_indices_path", "verbose", "num_nodes", "plot_train", "plot_val", "save_every", "num_samples", "every_n_epochs", "validate_config"]
         provided = getattr(self, "__pydantic_fields_set__", set())
         for name, field in self.model_fields.items():
             if name in except_fields or name in provided:

@@ -59,8 +59,8 @@ class PlPairVAE(pl.LightningModule):
     ) -> "PlPairVAE":
         """Build a PlPairVAE from two pretrained PlVAE checkpoints."""
         from src.model.vae.pl_vae import PlVAE
-        ckpt_path_saxs = model_config.ckpt_path_vae_saxs
-        ckpt_path_les = model_config.ckpt_path_vae_les
+        ckpt_path_saxs = model_config.ckpt_path_saxs
+        ckpt_path_les = model_config.ckpt_path_les
 
         vae_saxs = PlVAE.load_from_checkpoint(ckpt_path_saxs, map_location=map_location)
         vae_les = PlVAE.load_from_checkpoint(ckpt_path_les, map_location=map_location)
@@ -242,8 +242,12 @@ class PlPairVAE(pl.LightningModule):
 
     def on_load_checkpoint(self, checkpoint):
         """Restore PairVAE and its sub-VAEs from unified checkpoint metadata."""
-        self.model_cfg = PairVAEModelConfig(**checkpoint["pairvae_model_config"])
-        self.train_cfg = PairVAETrainingConfig(**checkpoint["pairvae_train_config"])
+        if "pairvae_model_config" in checkpoint or "pairvae_train_config" in checkpoint:
+            self.model_cfg = PairVAEModelConfig(**checkpoint["pairvae_model_config"])
+            self.train_cfg = PairVAETrainingConfig(**checkpoint["pairvae_train_config"], validate_config=False)
+        else:
+            self.model_cfg = PairVAEModelConfig(**checkpoint["model_config"])
+            self.train_cfg = PairVAETrainingConfig(**checkpoint["train_config"], validate_config=False)
 
         def _restore_vae(entry):
             from src.model.vae.pl_vae import PlVAE

@@ -10,15 +10,12 @@ import sys
 
 import torch
 
-from model.inferencer import run_inference
-
 # Add repo root to sys.path for absolute imports when running as a script
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.logging_utils import get_logger
-from src.model.configs import (
-    ModelType, ModelSpec
-)
+from src.model.configs import ModelType
+from src.model.inferencer import run_inference
 
 logger = get_logger(__name__)
 
@@ -76,13 +73,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--format",
         choices=["txt", "h5"],
-        default="h5",
+        default="txt",
         help="Output format for predictions (default: h5).",
     )
     parser.add_argument(
         "--plot_limit",
         type=int,
-        default=100,
+        default=10,
         help="Maximum number of plots to save if --plot is enabled.",
     )
     parser.add_argument(
@@ -94,7 +91,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--sample_seed",
         type=int,
-        default=42,
+        default=1,
         help="Random seed for sampling.",
     )
     return parser.parse_args()
@@ -106,12 +103,17 @@ def main() -> None:
 
     # Load checkpoint metadata to detect model type
     hparams = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
-    model_type = hparams.get("model_config", {}).get("type", ModelType.VAE)
+    if "model_config" in hparams:
+        model_type = hparams["model_config"]["type"]
+    elif "pairvae_model_config" in hparams:
+        model_type = hparams["pairvae_model_config"]["type"]
+    else:
+        raise ValueError("Checkpoint is missing model configuration.")
 
     if model_type not in (ModelType.VAE, ModelType.PAIR_VAE):
         raise ValueError(f"Model type {model_type} is not supported for inference.")
     if model_type == ModelType.PAIR_VAE and args.mode is None:
-        raise ValueError("Please provide the translation mode for the PairVAE model.")
+        raise ValueError("Please provide the translation mode for the PairVAE model. (--mode)")
     if args.data_dir and args.data_path.endswith(".h5"):
         raise ValueError("Provide either a data path or a data directory, not both.")
     if args.data_dir and not args.data_path.endswith(".csv"):
