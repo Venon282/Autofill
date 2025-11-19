@@ -25,7 +25,7 @@ class HDF5Dataset(Dataset):
 
     def __init__(self, hdf5_file, conversion_dict: Union[dict, str, Path] = None, metadata_filters=None, requested_metadata=None,
                  transformer_q=Pipeline(), transformer_y=Pipeline(),
-                 use_data_q: bool = True):
+                 use_data_q: bool = True, sanity_check=True):
         """
         Initialize the dataset and eagerly prepare metadata filters and transforms.
 
@@ -45,6 +45,7 @@ class HDF5Dataset(Dataset):
         self.hdf5_file = hdf5_file
         self.hdf = h5py.File(hdf5_file, 'r', swmr=True)
         self.use_data_q = use_data_q
+        self.sanity_check = sanity_check
 
         try:
             if "data_q" in self.hdf:
@@ -55,9 +56,10 @@ class HDF5Dataset(Dataset):
             raise ValueError(f"Error loading 'data_q' or 'data_wavelength' from HDF5 file: {e}")
 
         first_q = self.data_q[0]
-        for i in tqdm(range(len(self.data_q)), desc="Sanity checking H5", leave=False):
-            if not np.array_equal(self.data_q[i], first_q):
-                raise AssertionError("All data_q/data_wavelength arrays must be identical")
+        if self.sanity_check:
+            for i in tqdm(range(len(self.data_q)), desc="Sanity checking H5", leave=False):
+                if not np.array_equal(self.data_q[i], first_q):
+                    raise AssertionError("All data_q/data_wavelength arrays must be identical")
         self.data_q = first_q
 
         # --- Load intensity data ---
@@ -182,15 +184,9 @@ class HDF5Dataset(Dataset):
         data_q = self.transformer_q.transform(self.data_q)
         data_q = torch.as_tensor(data_q, dtype=torch.float32).unsqueeze(0)
 
-        batch = {
-            "data_y": data_y_transformed,
-            "data_y_untransformed": torch.as_tensor(data_y, dtype=torch.float32).unsqueeze(0),
-            "metadata": metadata,
-            "len": self.len[original_idx],
-            "data_index": original_idx
-        }
-
-        batch["data_q"] = data_q
+        batch = {"data_y": data_y_transformed,
+                 "data_y_untransformed": torch.as_tensor(data_y, dtype=torch.float32).unsqueeze(0),
+                 "metadata": metadata, "len": self.len[original_idx], "data_index": original_idx, "data_q": data_q}
 
         return batch
 
