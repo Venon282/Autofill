@@ -113,8 +113,8 @@ class BaseValidationEngine(ABC):
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self.config = config
-        self.model_type = config.get("model", {}).get("type", "unknown")
-        self.model_spec = config.get("model", {}).get("spec", "unknown")
+        self.model_type = config.get("model_config", {}).get("type", "unknown")
+        self.model_spec = config.get("model_config", {}).get("spec", "unknown")
         logger.info("Model type: %s", self.model_type)
         logger.info("Model spec: %s", self.model_spec)
         self.batch_size = batch_size
@@ -144,7 +144,7 @@ class BaseValidationEngine(ABC):
         if conversion_dict_path:
             with open(conversion_dict_path, "r", encoding="utf-8") as handle:
                 return json.load(handle)
-        return self.config.get("conversion_dict")
+        return self.config.get("conversion_dict", {})
 
     @abstractmethod
     def _load_model(self) -> torch.nn.Module:
@@ -612,8 +612,7 @@ class VaeValidationEngine(BaseValidationEngine):
     def _build_dataset(self, conversion_dict: Optional[dict]) -> Tuple[HDF5Dataset, Any]:
         """Configure dataset and inverse transforms for VAE."""
 
-        dataset_cfg = self.config["dataset"]["metadata_filters"]
-        transforms = self.config["transforms_data"]
+        dataset_cfg = self.config["global_config"]["dataset"]
 
         requested_metadata = [
             "length_nm",
@@ -624,10 +623,9 @@ class VaeValidationEngine(BaseValidationEngine):
 
         dataset = HDF5Dataset(
             str(self.data_path),
-            sample_frac=1.0,
-            transformer_q=transforms["q"],
-            transformer_y=transforms["y"],
-            metadata_filters=dataset_cfg,
+            transformer_q=Pipeline(self.model.get_transformer_q()),
+            transformer_y=Pipeline(self.model.get_transformer_y()),
+            metadata_filters=dataset_cfg["metadata_filters"],
             conversion_dict=conversion_dict,
             requested_metadata=requested_metadata,
             use_data_q=False,
@@ -670,16 +668,14 @@ class VaeValidationEngine(BaseValidationEngine):
         if q_pred.ndim == 3:
             q_pred = q_pred.squeeze(1)
 
-        q_pred_cpu = q_pred
         recon_inverted, _ = self.invert_transforms(
-            recon.detach().cpu(), q_pred_cpu
+            recon.detach().cpu(), q_pred
         )
 
         true_values = batch["data_y"].detach().cpu().squeeze(1)
         true_inverted, _ = self.invert_transforms(
-            true_values, q_pred_cpu
+            true_values, q_pred
         )
-        q_true = q_pred
 
         metadata = batch.get("metadata", {})
 
@@ -702,10 +698,10 @@ class VaeValidationEngine(BaseValidationEngine):
 
         for i in range(recon_inverted.shape[0]):
             y_pred = recon_inverted[i].numpy()
-            if isinstance(q_pred_cpu, list):
-                q_slice = q_pred_cpu[i]
+            if isinstance(q_pred, list):
+                q_slice = q_pred[i]
             else:
-                q_slice = q_pred_cpu
+                q_slice = q_pred
             q_batch = q_slice.numpy() if hasattr(q_slice, "numpy") else q_slice
             true_d = float(diam_true[i]) if np.ndim(diam_true) > 0 else float(diam_true)
             true_l = float(length_true[i]) if np.ndim(length_true) > 0 else float(length_true)
@@ -713,7 +709,7 @@ class VaeValidationEngine(BaseValidationEngine):
 
             pred_samples.append((y_pred, q_batch, true_d, true_l, true_c))
             y_true = true_inverted[i].numpy()
-            true_samples.append((y_true, q_true, true_d, true_l, true_c))
+            true_samples.append((y_true, q_batch, true_d, true_l, true_c))
 
         return pred_samples, true_samples
 
@@ -754,29 +750,28 @@ class PairVaeValidationEngine(BaseValidationEngine):
     def _build_dataset(self, conversion_dict: Optional[dict]) -> Tuple[HDF5Dataset, Any]:
         """Configure dataset and inverse transforms for PairVAE."""
 
-        dataset_cfg = self.config["dataset"]["metadata_filters"]
-        transform_config = self.config.get("transforms_data", {})
+        dataset_cfg = self.config["global_config"]["dataset"]
 
         if self.mode == "les_to_saxs":
-            transformer_q = Pipeline(transform_config["q_les"])
-            transformer_y = Pipeline(transform_config["y_les"])
-            output_transformer_q = Pipeline(transform_config["q_saxs"])
-            output_transformer_y = Pipeline(transform_config["y_saxs"])
+            transformer_q = Pipeline(self.model.get_transforms_data_les()["q"])
+            transformer_y = Pipeline(self.model.get_transforms_data_les()['y'])
+            output_transformer_q = Pipeline(self.model.get_transforms_data_saxs()["q"])
+            output_transformer_y = Pipeline(self.model.get_transforms_data_saxs()['y'])
         elif self.mode == "les_to_les":
-            transformer_q = Pipeline(transform_config["q_les"])
-            transformer_y = Pipeline(transform_config["y_les"])
-            output_transformer_q = Pipeline(transform_config["q_les"])
-            output_transformer_y = Pipeline(transform_config["y_les"])
+            transformer_q = Pipeline(self.model.get_transforms_data_les()["q"])
+            transformer_y = Pipeline(self.model.get_transforms_data_les()['y'])
+            output_transformer_q = Pipeline(self.model.get_transforms_data_les()["q"])
+            output_transformer_y = Pipeline(self.model.get_transforms_data_les()['y'])
         elif self.mode == "saxs_to_saxs":
-            transformer_q = Pipeline(transform_config["q_saxs"])
-            transformer_y = Pipeline(transform_config["y_saxs"])
-            output_transformer_q = Pipeline(transform_config["q_saxs"])
-            output_transformer_y = Pipeline(transform_config["y_saxs"])
+            transformer_q = Pipeline(self.model.get_transforms_data_saxs()["q"])
+            transformer_y = Pipeline(self.model.get_transforms_data_saxs()['y'])
+            output_transformer_q = Pipeline(self.model.get_transforms_data_saxs()["q"])
+            output_transformer_y = Pipeline(self.model.get_transforms_data_saxs()['y'])
         else:
-            transformer_q = Pipeline(transform_config["q_saxs"])
-            transformer_y = Pipeline(transform_config["y_saxs"])
-            output_transformer_q = Pipeline(transform_config["q_les"])
-            output_transformer_y = Pipeline(transform_config["y_les"])
+            transformer_q = Pipeline(self.model.get_transforms_data_saxs()["q"])
+            transformer_y = Pipeline(self.model.get_transforms_data_saxs()['y'])
+            output_transformer_q = Pipeline(self.model.get_transforms_data_les()["q"])
+            output_transformer_y = Pipeline(self.model.get_transforms_data_les()['y'])
 
         requested_metadata = [
             "diameter_nm",
@@ -787,10 +782,9 @@ class PairVaeValidationEngine(BaseValidationEngine):
 
         dataset = HDF5Dataset(
             str(self.data_path),
-            sample_frac=1.0,
             transformer_q=transformer_q,
             transformer_y=transformer_y,
-            metadata_filters=dataset_cfg,
+            metadata_filters=dataset_cfg["metadata_filters"],
             conversion_dict=conversion_dict,
             requested_metadata=requested_metadata,
             use_data_q=False,
@@ -850,17 +844,16 @@ class PairVaeValidationEngine(BaseValidationEngine):
         if q_pred.ndim == 3:
             q_pred = q_pred.squeeze(1)
 
-        q_pred_cpu = q_pred
         recon_inverted, _ = self.invert_transforms(
-            recon.detach().cpu(), q_pred_cpu
+            recon.detach().cpu(), q_pred
         )
 
         if true_values is not None:
-            true_inverted, q_true_inverted = self.invert_transforms(
-                true_values, q_pred_cpu
+            true_inverted, _ = self.invert_transforms(
+                true_values, q_pred
             )
         else:
-            true_inverted, q_true_inverted = None, None
+            true_inverted, _ = None, None
 
         metadata = batch.get("metadata", {})
 
@@ -883,24 +876,22 @@ class PairVaeValidationEngine(BaseValidationEngine):
 
         for i in range(recon_inverted.shape[0]):
             y_pred = recon_inverted[i].numpy()
-            q_slice = q_pred_cpu
-            q_batch = q_slice.numpy() if hasattr(q_slice, "numpy") else q_slice
+            q_batch = q_pred.numpy() if hasattr(q_pred, "numpy") else q_pred
             true_d = float(diam_true[i]) if np.ndim(diam_true) > 0 else float(diam_true)
             true_l = float(length_true[i]) if np.ndim(length_true) > 0 else float(length_true)
             true_c = float(conc_true[i]) if np.ndim(conc_true) > 0 else float(conc_true)
 
             pred_samples.append((y_pred, q_batch, true_d, true_l, true_c))
 
-            if true_inverted is not None and q_true_inverted is not None:
+            if true_inverted is not None :
                 y_true = true_inverted[i].numpy()
-                q_true = q_true_inverted
-                true_samples.append((y_true, q_true, true_d, true_l, true_c))
+                true_samples.append((y_true, q_batch, true_d, true_l, true_c))
 
         return pred_samples, true_samples
 
     def create_fit_metric(self) -> BaseFitMetric:
         """Create LES or SAXS fit metric depending on mode."""
-        assert self.model_spec == 'pair', "Model spec must be 'pair' for PairVAE fit metric."
+        assert self.model_type == 'pair_vae', "Model type must be 'pair' for PairVAE fit metric."
         if self.mode in {"les_to_saxs", "saxs_to_saxs"}:
             use_first = self.signal_length if self.mode == "les_to_saxs" else None
             return SaxsFitMetric(
@@ -919,7 +910,7 @@ def _load_config(checkpoint_path: str) -> Dict[str, Any]:
     """Load configuration dictionary from a checkpoint."""
 
     checkpoint = torch.load(checkpoint_path, map_location="cpu")
-    return checkpoint["hyper_parameters"]["config"]
+    return checkpoint
 
 
 def ValidationEngine(**kwargs: Any) -> BaseValidationEngine:
@@ -927,7 +918,7 @@ def ValidationEngine(**kwargs: Any) -> BaseValidationEngine:
 
     checkpoint_path = kwargs["checkpoint_path"]
     config = _load_config(checkpoint_path)
-    model_type = config["model"]["type"].lower()
+    model_type = config["model_config"]["type"].lower()
 
     if model_type == "vae":
         return VaeValidationEngine(config=config, **kwargs)

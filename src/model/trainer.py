@@ -110,7 +110,7 @@ class BaseTrainPipeline:
             log_every_n_steps=10,
             callbacks=callbacks,
             logger=logger_obj,
-            enable_progress_bar=True,
+            enable_progress_bar=False,
             precision="32",
         )
 

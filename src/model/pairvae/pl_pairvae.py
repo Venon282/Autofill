@@ -59,8 +59,8 @@ class PlPairVAE(pl.LightningModule):
     ) -> "PlPairVAE":
         """Build a PlPairVAE from two pretrained PlVAE checkpoints."""
         from src.model.vae.pl_vae import PlVAE
-        ckpt_path_saxs = model_config.ckpt_path_vae_saxs
-        ckpt_path_les = model_config.ckpt_path_vae_les
+        ckpt_path_saxs = model_config.ckpt_path_saxs
+        ckpt_path_les = model_config.ckpt_path_les
 
         vae_saxs = PlVAE.load_from_checkpoint(ckpt_path_saxs, map_location=map_location)
         vae_les = PlVAE.load_from_checkpoint(ckpt_path_les, map_location=map_location)
@@ -150,20 +150,13 @@ class PlPairVAE(pl.LightningModule):
             raise RuntimeError("PairVAE model is not initialized.")
         optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.train_cfg.max_lr)
 
-        from src.model.pairvae.scheduler import WarmupReduceLROnPlateau
+        from src.model.pairvae.scheduler import WarmupLR
 
-        scheduler = WarmupReduceLROnPlateau(
+        scheduler = WarmupLR(
             optimizer,
             warmup_epochs=self.train_cfg.warmup_epochs,
             max_lr=self.train_cfg.max_lr,
             eta_min=self.train_cfg.eta_min,
-            reduce_on_plateau_args=dict(
-                mode="min",
-                factor=0.1,
-                patience=10,
-                threshold=1e-3,
-                min_lr=self.train_cfg.eta_min,
-            ),
         )
 
         return {
@@ -242,8 +235,8 @@ class PlPairVAE(pl.LightningModule):
 
     def on_load_checkpoint(self, checkpoint):
         """Restore PairVAE and its sub-VAEs from unified checkpoint metadata."""
-        self.model_cfg = PairVAEModelConfig(**checkpoint["pairvae_model_config"])
-        self.train_cfg = PairVAETrainingConfig(**checkpoint["pairvae_train_config"])
+        self.model_cfg = PairVAEModelConfig(**checkpoint["model_config"])
+        self.train_cfg = PairVAETrainingConfig(**checkpoint["train_config"])
 
         def _restore_vae(entry):
             from src.model.vae.pl_vae import PlVAE
