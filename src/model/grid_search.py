@@ -14,9 +14,10 @@ logger = get_logger(__name__)
 class GridSearch:
     """Enumerate combinations from param_grid and launch training runs."""
 
-    def __init__(self, config: Dict) -> None:
+    def __init__(self, config: Dict, show_progressbar= True) -> None:
         self.base_config = config
         self.param_grid = self._get_param_grid()
+        self.show_progressbar = show_progressbar
 
     def _get_param_grid(self) -> Dict[str, Iterable]:
         """Return the parameter grid declared in the configuration."""
@@ -41,7 +42,7 @@ class GridSearch:
         try:
             logger.info("Initializing training trainer (run %d/%d)...", index + 1, total_runs)
             config.pop("param_grid", None)
-            trainer = make_trainer(config, verbose=False)
+            trainer = make_trainer(config, verbose=False, show_progressbar=self.show_progressbar)
             logger.info("GPU available: %s", torch.cuda.is_available())
             logger.info("Starting training for run %d/%d", index + 1, total_runs)
             trainer.train()

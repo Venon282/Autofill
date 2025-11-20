@@ -27,11 +27,13 @@ class PairHDF5Dataset(Dataset):
                  transformer_q_les=Pipeline(),
                  transformer_y_les=Pipeline(),
                  use_data_q: bool = True,
+                 show_progressbar: bool = True,
                  **kwargs):
         """Initialize paired datasets and configure metadata filtering and transforms."""
         if requested_metadata is None:
             requested_metadata = []
 
+        self.show_progress = show_progressbar
         self.hdf5_file = hdf5_file
         self.hdf = h5py.File(hdf5_file, 'r', swmr=True)
         self.use_data_q = use_data_q
@@ -58,7 +60,7 @@ class PairHDF5Dataset(Dataset):
                 ("data_q_saxs", self.data_q_saxs, self.data_q_saxs[0]),
                 ("data_q_les", self.data_q_les, self.data_q_les[0]),
             ]:
-                for i in tqdm(range(len(data)), desc=f"Sanity checking H5: {name}", leave=False):
+                for i in tqdm(range(len(data)), desc=f"Sanity checking H5: {name}", leave=False, disable=not self.show_progress):
                     if not np.array_equal(data[i], first):
                         raise AssertionError(f"{name} entry {i} differs from entry 0")
             self.data_q_saxs = first_q_saxs
@@ -135,7 +137,7 @@ class PairHDF5Dataset(Dataset):
         if not self.metadata_filters:
             return list(range(len(self.data_y_saxs)))
         mask = np.ones(len(self.data_y_saxs), dtype=bool)
-        for key, allowed_values in tqdm(self.metadata_filters.items(), desc="Applying filters"):
+        for key, allowed_values in tqdm(self.metadata_filters.items(), desc="Applying filters", disable=not self.show_progress):
             if key not in self.metadata_datasets:
                 mask[:] = False
                 break

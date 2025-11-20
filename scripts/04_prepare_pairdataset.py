@@ -38,7 +38,9 @@ class PairTextToHDF5Converter:
         output_hdf5_filename: str = "final_output.h5",
         exclude: Iterable[str] = ("saxs_path", "les_path", "researcher", "date"),
         json_output: str = "conversion_dict.json",
+        progressbar = True
     ) -> None:
+        self.progressbar = progressbar
         self.dataframe = dataframe
         self.base = Path(data_dir)
         self.output_dir = Path(output_dir) if output_dir else Path(".")
@@ -187,8 +189,9 @@ class PairTextToHDF5Converter:
         self.hdf_file = self._create_hdf(output_file)
         current_size = 0
         current_index = 0
-
-        with tqdm(total=len(self.dataframe), desc="Processing pairs") as progress:
+        if not self.progressbar:
+            logger.info("Processing pairs..")
+        with tqdm(total=len(self.dataframe), desc="Processing pairs", disable= not self.progressbar) as progress:
             for idx, row in self.dataframe.iterrows():
                 progress.update(1)
                 file_path_saxs = self.base / str(row["saxs_path"]).lstrip("/")
@@ -252,6 +255,7 @@ class PairingHDF5Converter:
         output_filename: str,
         split_val_ratio: float = 0.15,
         split_test_ratio: float = 0.05,
+        progressbar=True
     ) -> None:
         """
         Initialize converter with input HDF5 paths and output settings.
@@ -264,6 +268,7 @@ class PairingHDF5Converter:
             split_val_ratio: Ratio of pairs to include in the validation set.
             split_test_ratio: Ratio of pairs to include in the test set.
         """
+        self.progressbar = progressbar
         self.saxs_hdf5_path = Path(saxs_hdf5_path)
         self.les_hdf5_path = Path(les_hdf5_path)
         self.output_dir = Path(output_dir)
@@ -492,8 +497,9 @@ class PairingHDF5Converter:
         length_les_list: List[float] = []
         diameter_les_list: List[float] = []
         concentration_les_list: List[float] = []
-
-        for _, saxs_idx, les_idx in tqdm(pairs, desc="Processing pairs"):
+        if not self.progressbar:
+            logger.info("Processing pairs..")
+        for _, saxs_idx, les_idx in tqdm(pairs, desc="Processing pairs", disable= not self.progressbar):
             y_saxs_list.append(y_saxs[saxs_idx])
             q_saxs_list.append(q_saxs[saxs_idx])
             y_les_list.append(y_les[les_idx])
@@ -590,7 +596,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--split_test_ratio", type=float, default=0.05, help="Split ratio for test subset.")
 
     parser.add_argument("--output_hdf5_filename", type=str, default="pair_data.h5", help="Destination HDF5 filename.")
+    parser.add_argument("-p","--no_progressbar",  dest='progressbar', action='store_false')
     return parser
+
 
 
 def main() -> None:
@@ -618,6 +626,7 @@ def main() -> None:
             output_hdf5_filename=os.path.basename(args.output_hdf5_filename),
             json_output=args.json_output,
             pad_size=args.pad_size,
+            progressbar=args.progressbar
         )
     else:
         converter = PairingHDF5Converter(
@@ -627,6 +636,7 @@ def main() -> None:
             output_filename=args.output_hdf5_filename,
             split_val_ratio=args.split_val_ratio,
             split_test_ratio=args.split_test_ratio,
+            progressbar=args.progressbar
         )
     converter.convert()
 

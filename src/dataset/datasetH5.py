@@ -25,7 +25,7 @@ class HDF5Dataset(Dataset):
 
     def __init__(self, hdf5_file, conversion_dict: Union[dict, str, Path] = None, metadata_filters=None, requested_metadata=None,
                  transformer_q=Pipeline(), transformer_y=Pipeline(),
-                 use_data_q: bool = True, sanity_check=True):
+                 use_data_q: bool = True, sanity_check=True, show_progressbar: bool = True):
         """
         Initialize the dataset and eagerly prepare metadata filters and transforms.
 
@@ -41,7 +41,7 @@ class HDF5Dataset(Dataset):
         """
         if requested_metadata is None:
             requested_metadata = []
-
+        self.show_progress = show_progressbar
         self.hdf5_file = hdf5_file
         self.hdf = h5py.File(hdf5_file, 'r', swmr=True)
         self.use_data_q = use_data_q
@@ -57,7 +57,7 @@ class HDF5Dataset(Dataset):
 
         first_q = self.data_q[0]
         if self.sanity_check:
-            for i in tqdm(range(len(self.data_q)), desc="Sanity checking H5", leave=False):
+            for i in tqdm(range(len(self.data_q)), desc="Sanity checking H5", leave=False, disable=not self.show_progress):
                 if not np.array_equal(self.data_q[i], first_q):
                     raise AssertionError("All data_q/data_wavelength arrays must be identical")
         self.data_q = first_q
@@ -137,7 +137,7 @@ class HDF5Dataset(Dataset):
             return list(range(len(self.data_y)))
 
         mask = np.ones(len(self.data_y), dtype=bool)
-        for key, allowed_values in tqdm(self.metadata_filters.items(), desc="Applying filters"):
+        for key, allowed_values in tqdm(self.metadata_filters.items(), desc="Applying filters", disable=not self.show_progress):
             if key not in self.metadata_datasets:
                 mask[:] = False
                 break

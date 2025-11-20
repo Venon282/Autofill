@@ -248,8 +248,8 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="Filename for the exported categorical conversion dictionary.",
     )
-    return parser
 
+    return parser
 
 def main() -> None:
     """Parse CLI arguments and launch the conversion."""
@@ -260,7 +260,7 @@ def main() -> None:
     csv_path = Path(args.data_csv_path)
     if not csv_path.exists():
         raise FileNotFoundError(f"CSV file not found: {csv_path}")
-
+    print(args.progressbar)
     dataframe = pd.read_csv(csv_path)
     converter = TextToHDF5Converter(
         dataframe=dataframe,

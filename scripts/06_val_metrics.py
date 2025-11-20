@@ -34,6 +34,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--factor_scale_to_conc", type=float, default=20878, help="Scale to concentration factor")
     parser.add_argument("--n_processes", type=int, help="Number of processes for fit metrics")
     parser.add_argument("--random_state", type=int, default=42, help="Random seed")
+    parser.add_argument("-p","--no_progressbar",  dest='progressbar', action='store_false')
     return parser.parse_args()
 
 
@@ -57,6 +58,7 @@ def main() -> None:
         random_state=args.random_state,
         signal_length=args.signal_length,
         mode=args.mode,
+        show_progressbar=args.progressbar,
     )
 
     results = engine.run()

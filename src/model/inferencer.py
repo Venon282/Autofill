@@ -33,17 +33,18 @@ class DatasetLoader:
         transformer_q: Pipeline,
         transformer_y: Pipeline,
         data_dir: str = ".",
+        show_progressbar: bool = True,
     ):
         """Load dataset (H5 or CSV/TXT) with given Pipeline transformers."""
         if data_path.endswith('.h5'):
-            return DatasetLoader._load_h5_dataset(data_path, conversion_dict_path, transformer_q, transformer_y)
+            return DatasetLoader._load_h5_dataset(data_path, conversion_dict_path, transformer_q, transformer_y, show_progressbar)
         elif data_path.endswith('.csv'):
             return DatasetLoader._load_csv_dataset(data_path, data_dir, transformer_q, transformer_y)
         else:
             raise ValueError(f"Unsupported data format: {data_path}")
 
     @staticmethod
-    def _load_h5_dataset(data_path: str, conversion_dict_path: Optional[str], transformer_q: Pipeline, transformer_y: Pipeline):
+    def _load_h5_dataset(data_path: str, conversion_dict_path: Optional[str], transformer_q: Pipeline, transformer_y: Pipeline, show_progressbar: bool = True):
         """Load HDF5 dataset."""
         return HDF5Dataset(
             hdf5_file=data_path,
@@ -51,7 +52,8 @@ class DatasetLoader:
             transformer_q=transformer_q,
             transformer_y=transformer_y,
             use_data_q=True,
-            sanity_check=False
+            sanity_check=False,
+            show_progressbar=show_progressbar,
         )
 
     @staticmethod
@@ -447,6 +449,7 @@ def run_inference(
     sample_seed: int = 42,
     is_pair: bool = False,
     mode: Optional[str] = None,
+    show_progressbar: bool = True,
     **kwargs
 ) -> None:
     """Run inference on a trained model.
@@ -534,6 +537,7 @@ def run_inference(
         transformer_q=transformer_q_input,
         transformer_y=transformer_y_input,
         data_dir=data_dir,
+        show_progressbar=show_progressbar,
     )
 
     dataset = DatasetSampler.sample_dataset(dataset, sample_frac, sample_seed)

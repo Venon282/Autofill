@@ -242,7 +242,11 @@ class PlVAE(pl.LightningModule):
             raise
 
         try:
-            train_cfg = VAETrainingConfig(**checkpoint["train_config"],validate_config=False)
+            if 'validate_config' in checkpoint["train_config"]:
+                checkpoint["train_config"]['validate_config'] = False
+                train_cfg = VAETrainingConfig(**checkpoint["train_config"])
+            else:
+                train_cfg = VAETrainingConfig(**checkpoint["train_config"], validate_config=False)
         except KeyError:
             raise KeyError("Checkpoint missing key 'train_config'.")
         except ValidationError as e:

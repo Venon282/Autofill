@@ -35,7 +35,7 @@ torch.set_float32_matmul_precision("high")
 class BaseTrainPipeline:
     """Base pipeline handling shared logic for model training."""
 
-    def __init__(self, model_cfg, train_cfg, dataset_cfg, run_name="run" , verbose=False, experiment_name="train_exp", mlflow_uri=None):
+    def __init__(self, model_cfg, train_cfg, dataset_cfg, run_name="run" , verbose=False, experiment_name="train_exp", mlflow_uri=None, show_progressbar=True):
         self.model_cfg = model_cfg
         self.train_cfg = train_cfg
         self.dataset_cfg = dataset_cfg
@@ -52,6 +52,7 @@ class BaseTrainPipeline:
         self.validation_loader = None
         self.test_dataloader = None
         self.trainer = None
+        self.show_progressbar = show_progressbar
 
     def _safe_log_directory(self) -> Path:
         base = Path(self.train_cfg.output_dir or "train_results", self.experiment_name)
@@ -110,7 +111,7 @@ class BaseTrainPipeline:
             log_every_n_steps=10,
             callbacks=callbacks,
             logger=logger_obj,
-            enable_progress_bar=False,
+            enable_progress_bar=self.show_progressbar,
             precision="32",
         )
 
@@ -135,7 +136,7 @@ class BaseTrainPipeline:
             subsets["train"], subsets["val"] = random_split(self.dataset, [train_count, total - train_count])
 
         bs = cfg.batch_size
-        nw =  max(cfg.num_workers, os.cpu_count())
+        nw =  min(cfg.num_workers, os.cpu_count())
         loaders["train"] = DataLoader(subsets["train"], batch_size=bs, shuffle=True, num_workers=nw)
         loaders["val"] = DataLoader(subsets["val"], batch_size=bs, shuffle=False, num_workers=nw)
         if "test" in subsets and subsets["test"]:
@@ -255,6 +256,7 @@ class SingleVAEPipeline(BaseTrainPipeline):
             transformer_q=Pipeline(transforms["q"]),
             transformer_y=Pipeline(transforms["y"]),
             use_data_q=self.dataset_cfg.use_data_q,
+            show_progressbar = self.show_progressbar
         )
         self.model_cfg.data_q = dataset.get_data_q()
         self.model_cfg.transforms_data = dataset.transforms_to_dict()
@@ -300,6 +302,7 @@ class PairVAEPipeline(BaseTrainPipeline):
             transformer_q_les=Pipeline(transform_les["q"]),
             transformer_y_les=Pipeline(transform_les["y"]),
             use_data_q=self.dataset_cfg.use_data_q,
+            show_progressbar=self.show_progressbar
         )
         model.set_global_config(
                 {"experiment_name": self.experiment_name,
@@ -320,7 +323,7 @@ class PairVAEPipeline(BaseTrainPipeline):
 
 
 #region Pipeline Factory
-def make_trainer(config: dict, verbose=False):
+def make_trainer(config: dict, verbose=False, show_progressbar=False) -> BaseTrainPipeline:
     """Factory to create the appropriate training pipeline."""
 
     required_keys = ["model", "training", "dataset", "experiment_name"]
@@ -348,6 +351,7 @@ def make_trainer(config: dict, verbose=False):
                 verbose=verbose,
                 experiment_name=config["experiment_name"],
                 mlflow_uri=config.get("mlflow_uri"),
+                show_progressbar=show_progressbar,
             )
 
         elif model_type == ModelType.PAIR_VAE:
@@ -359,6 +363,7 @@ def make_trainer(config: dict, verbose=False):
                 verbose=verbose,
                 experiment_name=config["experiment_name"],
                 mlflow_uri=config.get("mlflow_uri"),
+                show_progressbar=show_progressbar,
             )
 
         else:

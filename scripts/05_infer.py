@@ -94,6 +94,7 @@ def parse_args() -> argparse.Namespace:
         default=1,
         help="Random seed for sampling.",
     )
+    parser.add_argument("-p","--no_progressbar",  dest='progressbar', action='store_false')
     return parser.parse_args()
 
 
@@ -114,6 +115,8 @@ def main() -> None:
         raise ValueError(f"Model type {model_type} is not supported for inference.")
     if model_type == ModelType.PAIR_VAE and args.mode is None:
         raise ValueError("Please provide the translation mode for the PairVAE model. (--mode)")
+    if model_type == ModelType.VAE and args.mode is not None:
+        raise ValueError("The --mode argument is only applicable for PairVAE models.")
     if args.data_dir and args.data_path.endswith(".h5"):
         raise ValueError("Provide either a data path or a data directory, not both.")
     if args.data_dir and not args.data_path.endswith(".csv"):
@@ -137,6 +140,7 @@ def main() -> None:
         sample_seed=args.sample_seed,
         is_pair=(model_type == "pair_vae"),
         mode=args.mode,
+        show_progressbar=args.progressbar,
     )
 
 

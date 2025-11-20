@@ -43,6 +43,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--material", type=str, default=None, help="Filter the dataset to a given material label.")
     parser.add_argument("--dry-run", action="store_true", default=False, help="Validate configuration and check file paths without starting training.")
     parser.add_argument("--verbose", action="store_true", default=False, help="Enable verbose logging output.")
+    parser.add_argument("-p","--no_progressbar",  dest='progressbar', action='store_false')
     return parser.parse_args()
 
 
@@ -102,10 +103,10 @@ def main() -> None:
     try:
         if args.gridsearch:
             logger.info("Starting grid search...")
-            grid_search = GridSearch(config)
+            grid_search = GridSearch(config, show_progressbar=args.progressbar)
             grid_search.run()
         else:
-            pipeline = make_trainer(config, verbose=args.verbose)
+            pipeline = make_trainer(config, verbose=args.verbose, show_progressbar=args.progressbar)
             pipeline.train()
     except KeyboardInterrupt:
         logger.warning("Training interrupted by user.")

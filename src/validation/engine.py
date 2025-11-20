@@ -105,12 +105,14 @@ class BaseValidationEngine(ABC):
         n_processes: Optional[int] = None,
         random_state: int = 42,
         signal_length: Optional[int] = None,
-        mode: Optional[str] = None
+        mode: Optional[str] = None,
+        show_progressbar: bool = True,
     ) -> None:
         self.checkpoint_path = Path(checkpoint_path)
         self.data_path = Path(data_path)
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.show_progressbar = show_progressbar
 
         self.config = config
         self.model_type = config.get("model_config", {}).get("type", "unknown")
@@ -208,8 +210,10 @@ class BaseValidationEngine(ABC):
         total_batches = 0
         attempted_samples = 0
 
+        if not self.show_progressbar:
+            logger.info("Computing reconstruction metrics using %d processes...", self.n_processes)
         with torch.no_grad():
-            for batch in tqdm(loader, desc="Computing reconstruction metrics"):
+            for batch in tqdm(loader, desc="Computing reconstruction metrics", disable=not self.show_progressbar):
                 total_batches += 1
                 batch = move_to_device(batch, self.device)
                 recon, true_values, metadata_batch, lengths = self.forward_reconstruction(batch)
@@ -306,7 +310,9 @@ class BaseValidationEngine(ABC):
 
         pred_samples: List[Tuple] = []
         true_samples: List[Tuple] = []
-        for batch in tqdm(loader, desc="Preprocess for fit samples"):
+        if not self.show_progressbar:
+            logger.info("Preprocessing fit samples using %d processes...", self.n_processes)
+        for batch in tqdm(loader, desc="Preprocess for fit samples", disable= not self.show_progressbar):
             with torch.no_grad():
                 batch = move_to_device(batch, self.device)
                 pred_batch, true_batch = self.forward_fit(batch)
@@ -629,6 +635,7 @@ class VaeValidationEngine(BaseValidationEngine):
             conversion_dict=conversion_dict,
             requested_metadata=requested_metadata,
             use_data_q=False,
+            show_progressbar=self.show_progressbar,
         )
         invert_transforms = dataset.invert_transforms_func()
         return dataset, invert_transforms
@@ -788,6 +795,7 @@ class PairVaeValidationEngine(BaseValidationEngine):
             conversion_dict=conversion_dict,
             requested_metadata=requested_metadata,
             use_data_q=False,
+            show_progressbar=self.show_progressbar,
         )
 
         def invert(y, q):
