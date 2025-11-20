@@ -9,7 +9,7 @@ Getting started
    **Authors:**
 
    * **Julien Rabault** - julien.rabault@irit.fr
-   * **Caroline de Pourtalès** - caroline.de-pourtales@irit.fr
+   * **Caroline de Pourtalès** - caro.de.pourtales@gmail.com
 
    Ready to get started? Follow the workflow below to begin using AutoFill for your scattering data analysis.
 
@@ -88,7 +88,7 @@ Documentation structure
 - :doc:`configuration` - **Essential reference** for all training parameters
 - :doc:`data_formats` - HDF5 file structures and data organization
 - :doc:`tutorials` - Step-by-step workflows with command examples
-- :doc:`api/index` - API reference for developers
+- :doc:`api` - API reference for developers
 
 Next steps
 ----------
@@ -96,4 +96,4 @@ Next steps
 1. **Read the configuration guide**: :doc:`configuration` contains all parameters you need for training
 2. **Understand data formats**: :doc:`data_formats` explains the HDF5 structure
 3. **Follow tutorials**: :doc:`tutorials` provides step-by-step examples
-4. **Check API reference**: :doc:`api/index` for detailed module documentation
+4. **Check API reference**: :doc:`api` for detailed module documentation

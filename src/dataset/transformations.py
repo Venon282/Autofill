@@ -114,26 +114,6 @@ class EnsurePositive(Transformer):
         return data
 
 
-class MultiplyByFactor(Transformer):
-    """Multiplie toutes les valeurs par un facteur donné."""
-
-    name = "MultiplyByFactorTransformer"
-
-    def __init__(self, factor = 1000.0):
-        self.factor = factor
-        self._fitted = True  # pour compatibilité avec d’autres Transformers
-
-    def fit(self, data: np.ndarray) -> "MultiplyByFactor":
-        return self
-
-    def transform(self, data: np.ndarray) -> np.ndarray:
-        """Multiplie les données par le facteur."""
-        return data * self.factor
-
-    def invert(self, data: np.ndarray) -> np.ndarray:
-        """Divise les données par le facteur (opération inverse)."""
-        return data / self.factor
-
 class Log(Transformer):
     """Apply a log transform with epsilon stabilisation."""
 
@@ -151,24 +131,6 @@ class Log(Transformer):
 
     def invert(self, data: np.ndarray) -> np.ndarray:
         return np.exp(data) - self.epsilon
-
-class Exp(Transformer):
-    """Apply a exp transform with epsilon stabilisation."""
-
-    name = "ExpTransformer"
-
-    def __init__(self, epsilon: float = 1e-15):
-        self._fitted = True
-        self.epsilon = epsilon
-
-    def fit(self, data: np.ndarray) -> "Exp":
-        return self
-
-    def transform(self, data: np.ndarray) -> np.ndarray:
-        return np.exp(data)
-
-    def invert(self, data: np.ndarray) -> np.ndarray:
-        return np.log(data + self.epsilon)
 
 class PreprocessingBase:
     """Base helper that exposes a :class:`Pipeline` through a transformer-like API."""
@@ -248,7 +210,6 @@ class Pipeline:
         MinMaxScaler.name: MinMaxScaler,
         Padding.name: Padding,
         EnsurePositive.name: EnsurePositive,
-        Exp.name: Exp,
         Log.name: Log,
         PreprocessingLES.name: PreprocessingLES,
         PreprocessingSAXS.name: PreprocessingSAXS,

@@ -8,6 +8,15 @@ logger = get_logger(__name__)
 
 
 class BarlowTwinsLoss(nn.Module):
+    """
+    The Barlow-Twinn Loss normalizes the D dimensinonal vectors from the projection head and then computes the DxD cross-correlation matrix between the normalized vectors of the 2 views of each signal.
+
+    Then it splits this cross-correlation matrix into two parts. The first part, the diagonal of this matrix is brought closer to 1, 
+    which pushes up the cosine similarity between the latent vectors of two views of each signal, thus making the backbone invariant to the transformations applied to the views. 
+    The second part of the loss pushes the non-diagonal elements of the cross-corrlelation matrix closes to 0.
+    This reduces the redundancy between the different dimensions of the latent vector.
+
+    """
     def __init__(self, lambda_coeff=5e-3):
         super().__init__()
 

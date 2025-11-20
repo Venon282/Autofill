@@ -1,5 +1,7 @@
 """Lightning module orchestrating the PairVAE training loop."""
 
+from typing import Union
+
 import lightning.pytorch as pl
 import torch
 import torch.nn.functional as F
@@ -55,7 +57,7 @@ class PlPairVAE(pl.LightningModule):
         cls,
         model_config: PairVAEModelConfig,
         train_config: PairVAETrainingConfig,
-        map_location: str | torch.device | None = None,
+        map_location: Union[str, torch.device, None] = None,
     ) -> "PlPairVAE":
         """Build a PlPairVAE from two pretrained PlVAE checkpoints."""
         from src.model.vae.pl_vae import PlVAE

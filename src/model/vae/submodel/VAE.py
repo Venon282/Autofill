@@ -8,6 +8,10 @@ logger = get_logger(__name__)
 
 
 class VAE(nn.Module):
+    """A standard **1D convolutional VAE** that learns to encode input signals into a low-dimensional latent space and reconstruct them from sampled latent vectors.  
+    The architecture consists of symmetric convolutional and transposed-convolutional layers with `BatchNorm1d` and `GELU` activations.
+    """
+
     def __init__(self, input_dim=1000, latent_dim=64, in_channels=1, hidden_dims=None, output_channels=1):
         super().__init__()
         if hidden_dims is None:

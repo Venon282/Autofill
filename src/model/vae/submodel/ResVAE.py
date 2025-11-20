@@ -6,6 +6,11 @@ from src.logging_utils import get_logger
 logger = get_logger(__name__)
 
 class ResidualBlock(nn.Module):
+    """
+    A 1D convolutional residual block composed of two convolution layers and GELU activations.
+        - Downsamples the input by a factor of 2 (using `stride=2`).
+        - Includes a skip connection to preserve information and stabilize training.
+    """
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.conv1 = nn.Conv1d(in_channels, out_channels, kernel_size=3, stride=2, padding=1)
@@ -27,6 +32,12 @@ class ResidualBlock(nn.Module):
 
 
 class ResidualUpBlock(nn.Module):
+    """
+    A symmetric counterpart to :class:`ResidualBlock`, using transposed convolutions for upsampling.
+
+        - Doubles the spatial resolution via a `ConvTranspose1d`.
+        - Includes a transposed skip connection to maintain feature consistency.
+    """
     def __init__(self, in_channels, out_channels, kernel_size, output_padding=1):
         super().__init__()
         self.deconv1 = nn.ConvTranspose1d(in_channels, out_channels, kernel_size=kernel_size, stride=2, padding=1,
@@ -47,9 +58,14 @@ class ResidualUpBlock(nn.Module):
 
 
 class ResVAE(nn.Module):
+    """ This module implements a **Variational Autoencoder (VAE)** architecture built with **1D residual blocks**, suitable for sequential data such as time series or spectra.  
+    The architecture follows a symmetric encoder–decoder design, where each convolutional 
+    or transposed-convolutional layer is enhanced by a **residual (skip) connection** to improve gradient flow and training stability.
+    """
     def __init__(self, input_dim, latent_dim, in_channels=1,
                  down_channels=[16, 32, 64, 128, 256, 512], up_channels=[512, 256, 128, 64, 32, 16], dilation=1,
                  output_channels=1, strat="y", use_sigmoid=False, *args, **kwargs):
+
         super(ResVAE, self).__init__()
 
         if len(down_channels) != len(up_channels):

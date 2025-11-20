@@ -3,9 +3,9 @@ from torch.utils.data import Subset
 
 def build_subset(dataset, target_csv_indices, sample_frac: float = 1.0):
     """
-    Crée un torch.utils.data.Subset contenant uniquement les entrées
-    du dataset dont le champ "data_index" figure dans target_csv_indices.
-    Si sample_frac < 1.0, un échantillon aléatoire de cette fraction est conservé.
+    Create a torch.utils.data.Subset containing only the entries
+    from the dataset whose "data_index" field is present in target_csv_indices.
+    If sample_frac < 1.0, a random sample of this fraction is kept.
     """
     idx_map = {dataset.filtered_indices[i]: i for i in range(len(dataset))}
 

@@ -39,7 +39,7 @@ Quick start
    :maxdepth: 2
    :caption: API reference
 
-   api/index
+   api
 
 Indices and tables
 ==================
