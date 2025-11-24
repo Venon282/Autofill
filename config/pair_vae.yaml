@@ -40,9 +40,8 @@ training:
 
 model:
   type: pair_vae
-  ckpt_path_les: runs/AUTOFILL_LES/les_cylinder_ag_1/best.ckpt
-  ckpt_path_saxs: runs/SAXS/saxs_cylinder_ag_8/best.ckpt
-
+  ckpt_path_les: DATA/best_les.ckpt
+  ckpt_path_saxs: DATA/best_saxs.ckpt
 param_grid:
   training.weight_latent_similarity: [0.005, 0.001]
   training.weight_saxs2saxs: [ 0.04, 0.01]

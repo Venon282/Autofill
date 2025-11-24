@@ -1,6 +1,5 @@
 experiment_name: "AUTOFILL_SAXS"
 run_name: saxs_cylinder_ag
-#mlflow_uri: https://mlflowts.irit.fr/
 dataset:
   conversion_dict:
   hdf5_file: DATA/cylinder_saxs_library_no_noise_meta_diameter_metric.h5

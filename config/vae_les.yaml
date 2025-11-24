@@ -1,6 +1,5 @@
 experiment_name: "AUTOFILL_LES"
 run_name: les_cylinder_ag
-#mlflow_uri: https://mlflowts.irit.fr/
 dataset:
   conversion_dict:
   hdf5_file: DATA/cylinder_les_meta.h5
