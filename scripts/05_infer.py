@@ -36,7 +36,8 @@ def parse_args() -> argparse.Namespace:
         "--data_path",
         type=str,
         required=True,
-        help="Path to the evaluation HDF5 file or metadata CSV.",
+        help="Path to the evaluation HDF5 file or metadata CSV."
+             "Need to be a simple H5 dataset, not pair dataset for PairVAE models.",
     )
     parser.add_argument(
         "-cd",

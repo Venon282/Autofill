@@ -648,6 +648,7 @@ Console output includes:
 
 .. tip::
 
+   * **Important**: Always use a simple single-modality HDF5 file for ``--data_path``, never a paired dataset
    * Use ``--format h5`` for large-scale inference (faster I/O, single file)
    * Use ``--format txt`` when you need to integrate with external tools
    * Use ``--no_progressbar`` in SLURM jobs or when redirecting output to files
