@@ -55,6 +55,8 @@ def parse_args() -> argparse.Namespace:
              "If =1.0, the full dataset will be used."
              "If >1.0, take n=sample_frac samples",
     )
+    parser.add_argument('-i', '--indices_path', type=str, default=None,
+                        help="Path to the indices file.")
     parser.add_argument(
         "-dd",
         "--data_dir",
@@ -121,6 +123,10 @@ def main() -> None:
         raise ValueError("Provide either a data path or a data directory, not both.")
     if args.data_dir and not args.data_path.endswith(".csv"):
         raise ValueError("When --data_dir is set, --data_path must point to a CSV file.")
+    if args.indices_path and not os.path.isfile(args.indices_path):
+        raise ValueError(f"Indices file not found: {args.indices_path}")
+    if args.indices_path and args.sample_frac != 1.0:
+        raise ValueError("Cannot use --indices_path with --sample_frac other than 1.0")
 
     logger.info("Loading %s model from checkpoint: %s", model_type, args.checkpoint)
 
@@ -138,6 +144,7 @@ def main() -> None:
         plot_limit=args.plot_limit,
         n_jobs_io=args.n_jobs_io,
         sample_seed=args.sample_seed,
+        indices_path=args.indices_path,
         is_pair=(model_type == "pair_vae"),
         mode=args.mode,
         show_progressbar=args.progressbar,

@@ -237,8 +237,21 @@ class PlPairVAE(pl.LightningModule):
 
     def on_load_checkpoint(self, checkpoint):
         """Restore PairVAE and its sub-VAEs from unified checkpoint metadata."""
-        self.model_cfg = PairVAEModelConfig(**checkpoint["model_config"])
-        self.train_cfg = PairVAETrainingConfig(**checkpoint["train_config"])
+        try:
+            self.model_cfg = PairVAEModelConfig(**checkpoint["model_config"])
+        except KeyError:
+            try:
+                self.model_cfg = PairVAEModelConfig(**checkpoint["pairvae_model_config"])
+            except KeyError:
+                raise KeyError("Checkpoint must contain either 'model_config' or 'pairvae_model_config'")
+
+        try:
+            self.train_cfg = PairVAETrainingConfig(**checkpoint["train_config"])
+        except KeyError:
+            try:
+                self.train_cfg = PairVAETrainingConfig(**checkpoint["pairvae_train_config"])
+            except KeyError:
+                raise KeyError("Checkpoint must contain either 'train_config' or 'pairvae_train_config'")
 
         def _restore_vae(entry):
             from src.model.vae.pl_vae import PlVAE

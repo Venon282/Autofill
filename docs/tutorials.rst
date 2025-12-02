@@ -653,6 +653,8 @@ Console output includes:
    * Use ``--no_progressbar`` in SLURM jobs or when redirecting output to files
    * Use ``--sample_frac 0.1`` during development for quick iterations
    * Use ``--sample_seed`` for reproducible sampling across runs
+   * Use ``--indices_path`` to run inference on specific validation/test splits (same ``.npy`` files used in training)
+   * If both ``--indices_path`` and ``--sample_frac`` are provided, ``--indices_path`` takes precedence and a warning is displayed
    * Increase ``--n_jobs_io`` (e.g., 16) for faster TXT writing on systems with many cores
 
 .. note::

@@ -36,7 +36,7 @@ class DatasetLoader:
         show_progressbar: bool = True,
     ):
         """Load dataset (H5 or CSV/TXT) with given Pipeline transformers."""
-        if data_path.endswith('.h5', '.hdf5'):
+        if data_path.endswith(('.h5', '.hdf5')):
             return DatasetLoader._load_h5_dataset(data_path, conversion_dict_path, transformer_q, transformer_y, show_progressbar)
         elif data_path.endswith('.csv'):
             return DatasetLoader._load_csv_dataset(data_path, data_dir, transformer_q, transformer_y)
@@ -411,7 +411,44 @@ class DatasetSampler:
         dataset,
         sample_frac: float = 1.0,
         sample_seed: int = 42,
+        indices_path: Optional[str] = None,
+        model_spec: Optional[ModelSpec] = None,
     ):
+        """Sample dataset either from .npy file or using sample_frac.
+
+        If indices_path is provided, it takes precedence over sample_frac.
+        The .npy file can contain either:
+        - Simple indices: [idx1, idx2, ...]
+        - Triplets: [[pair_idx, saxs_idx, les_idx], ...]
+
+        When triplets are detected and model_spec is provided:
+        - ModelSpec.SAXS extracts position 1 (saxs_idx)
+        - ModelSpec.LES extracts position 2 (les_idx)
+        """
+        if indices_path is not None:
+            logger.info(f"Loading indices from: {indices_path}")
+            loaded_indices = np.load(indices_path, allow_pickle=True)
+
+            if loaded_indices.ndim == 2 and loaded_indices.shape[1] >= 3:
+                if model_spec == ModelSpec.SAXS:
+                    pos = 1
+                    logger.info(f"Extracting SAXS indices (position {pos})")
+                elif model_spec == ModelSpec.LES:
+                    pos = 2
+                    logger.info(f"Extracting LES indices (position {pos})")
+                else:
+                    pos = -1
+                    logger.warning(f"model_spec not provided, using last position (pos={pos})")
+
+                indices = [pair[pos] for pair in loaded_indices]
+            elif loaded_indices.ndim > 1:
+                indices = loaded_indices.flatten().tolist()
+            else:
+                indices = loaded_indices.tolist()
+
+            logger.info(f"Using {len(indices)} indices from file")
+            return Subset(dataset, indices)
+
         if sample_frac == 1.0:
             return dataset
 
@@ -450,6 +487,7 @@ def run_inference(
     is_pair: bool = False,
     mode: Optional[str] = None,
     show_progressbar: bool = True,
+    indices_path: Optional[str] = None,
     **kwargs
 ) -> None:
     """Run inference on a trained model.
@@ -529,6 +567,7 @@ def run_inference(
         transformer_y_output = Pipeline(transforms_output['y'])
 
         is_pair_model = True
+        model_spec = ModelSpec(output_domain)
 
     logger.info(f"Loading data from: {data_path}")
     dataset = DatasetLoader.load_dataset(
@@ -540,10 +579,10 @@ def run_inference(
         show_progressbar=show_progressbar,
     )
 
-    dataset = DatasetSampler.sample_dataset(dataset, sample_frac, sample_seed)
+    dataset = DatasetSampler.sample_dataset(dataset, sample_frac, sample_seed, indices_path, model_spec)
     dataloader = DatasetLoader.prepare_dataloader(dataset, batch_size)
 
-    logger.info("Running inference...")
+    logger.info(f"Running inference... with output spec: {model_spec.value}, ")
     engine = InferenceEngine(model, transformer_y_output, transformer_q_output, device)
 
     if is_pair_model:
