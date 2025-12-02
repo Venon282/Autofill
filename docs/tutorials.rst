@@ -539,7 +539,7 @@ Required arguments:
 
 * ``-o``, ``--outputdir`` – directory where reconstructed arrays and plots are stored. Created automatically if missing.
 * ``-c``, ``--checkpoint`` – path to the ``.ckpt`` file saved during training.
-* ``-d``, ``--data_path`` – evaluation dataset. Use the HDF5 file for VAE models or the paired HDF5 for PairVAE. You may also provide a metadata CSV when combined with ``--data_dir``.
+* ``-d``, ``--data_path`` – evaluation dataset. Use the HDF5 file for VAE models or the paired HDF5 for PairVAE. You may also provide a metadata CSV when combined with ``--data_dir``. Always use a simple single-modality HDF5 file for --data_path, never a paired dataset.
 
 PairVAE-specific arguments:
 
@@ -552,7 +552,7 @@ Optional arguments:
   * If ``< 1.0``: random fraction (e.g., ``0.25`` = 25% of data)
   * If ``= 1.0``: full dataset (default)
   * If ``> 1.0``: absolute number of samples (e.g., ``100`` = exactly 100 samples)
-
+* ``-i``, ``--indices_path`` – path to a NumPy ``.npy`` file with specific sample indices to run inference on (``--sample_frac`` need to be 1).
 * ``--format`` – output format for predictions: ``txt`` (individual files) or ``h5`` (single HDF5 file). Default: ``txt``.
 * ``--plot`` – save reconstruction plots alongside data outputs.
 * ``--plot_limit`` – maximum number of plots to save when ``--plot`` is enabled. Default: ``10``.
