@@ -34,6 +34,7 @@ Quick start
    configuration
    tutorials
    deep_learning_notes
+   checkpoint_guide
 
 .. toctree::
    :maxdepth: 2

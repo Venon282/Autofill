@@ -1,536 +1,728 @@
-Configuration guide
-===================
+Configuration
+=============
 
 .. note::
-   This guide explains how to configure AutoFill training experiments, including all available parameters and what to expect from the training outputs.
+   **Important**: This documentation reflects the current Pydantic-based configuration system.
+   All configurations are validated at runtime with automatic type checking and helpful error messages.
 
 .. contents::
    :local:
    :depth: 2
 
-Configuration file structure
-----------------------------
+Quick Start
+-----------
 
-.. note::
-   AutoFill uses YAML configuration files to define experiments. Here's the complete structure with all available parameters:
-
-Basic structure
-~~~~~~~~~~~~~~~
+Minimal VAE configuration:
 
 .. code-block:: yaml
 
-   # Required: Experiment identification
-   experiment_name: "my_experiment"
-   run_name: "run_001"
+   experiment_name: "my_saxs_vae"
+   run_name: "baseline"
 
-   # Optional: MLFlow tracking (if not provided, uses TensorBoard)
-   mlflow_uri: "http://localhost:5000"
-
-   # Required: Model configuration
    model:
-     type: "vae"  # or "pair_vae"
-     # Model-specific parameters...
+     type: vae
+     spec: saxs
+     vae_class: ResVAE
+     beta: 1.0e-7
+     args:
+       in_channels: 1
+       output_channels: 1
+       input_dim: 1000
+       latent_dim: 64
+       down_channels: [8, 16, 32, 64, 128, 256, 512]
+       up_channels: [512, 256, 128, 64, 32, 16, 8]
 
-   # Required: Dataset configuration
    dataset:
-     h5_file_path: "data/all_data.h5"
-     # Dataset-specific parameters...
+     hdf5_file: DATA/cylinder_saxs_library.h5
+     transforms_data:
+       y:
+         PreprocessingSAXS:
+           pad_size: 1000
+       q:
+         PreprocessingQ:
+           pad_size: 1000
 
-   # Required: Training configuration
    training:
-     num_epochs: 100
-     # Training-specific parameters...
+     output_dir: runs/
+     num_epochs: 300
+     batch_size: 8
+     max_lr: 1.0e-04
+     patience: 40
 
-   # Optional: Data transformations
-   transforms_data:
-     q: []  # Q-axis transformations
-     y: []  # Signal transformations
+Configuration Structure
+-----------------------
 
-Required parameters
+Pydantic Validation
 ~~~~~~~~~~~~~~~~~~~
 
-**Top-level required parameters:**
+AutoFill uses **Pydantic** models for configuration validation:
 
-``experiment_name`` (string)
-    Name of the experiment. Used for organizing logs and outputs.
+- **Automatic type checking**: Fields are validated against their declared types
+- **Range validation**: Numeric fields check min/max constraints (e.g., ``batch_size: int >= 1``)
+- **Default values**: Unspecified fields use sensible defaults with warnings
+- **Clear error messages**: Invalid configurations produce detailed error reports
 
-``run_name`` (string)
-    Unique identifier for this specific run within the experiment.
+Example validation error:
 
-``model`` (dict)
-    Model configuration dictionary (see model configuration section).
+.. code-block:: text
 
-``dataset`` (dict)
-    Dataset configuration dictionary (see dataset configuration section).
+   ValidationError: 2 validation errors for VAETrainingConfig
+   batch_size
+     Input should be greater than or equal to 1 [type=greater_than_equal]
+   max_lr
+     Input should be greater than 0 [type=greater_than]
 
-``training`` (dict)
-    Training configuration dictionary (see training configuration section).
+Top-Level Fields
+~~~~~~~~~~~~~~~~
 
-Model configuration
+``experiment_name`` (string, required)
+    Name of the experiment group. Used for organizing runs in output directories and MLFlow/TensorBoard.
+
+    Example: ``"AUTOFILL_SAXS"``
+
+``run_name`` (string, required)
+    Unique identifier for this specific run. Combined with ``experiment_name`` to create output paths.
+
+    Example: ``"saxs_cylinder_ag"``
+
+``mlflow_uri`` (string, optional)
+    MLFlow tracking server URI. If omitted, uses TensorBoard logging.
+
+    Example: ``"https://mlflowts.irit.fr/"``
+
+Model Configuration
 -------------------
 
-VAE model (single modality)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+VAE Models
+~~~~~~~~~~
+
+Configuration class: ``VAEModelConfig`` (inherits from ``BaseModelConfig``)
 
 .. code-block:: yaml
 
    model:
-     type: "vae"
-     spec: "saxs"  # or "les"
+     type: vae                    # ModelType.VAE
+     spec: saxs                   # ModelSpec.SAXS or ModelSpec.LES
+     vae_class: ResVAE            # Registered architecture name
+     beta: 1.0e-7                 # KL divergence weight
+     args:                        # Architecture-specific arguments
+       in_channels: 1
+       output_channels: 1
+       input_dim: 1000
+       latent_dim: 64
+       use_sigmoid: False
+       down_channels: [8, 16, 32, 64, 128, 256, 512]
+       up_channels: [512, 256, 128, 64, 32, 16, 8]
+
+**Required fields:**
+
+``type`` (ModelType enum)
+    Must be ``"vae"`` for single-modality VAE.
+
+    - Can be overridden with ``--mode vae`` command-line argument
+
+``spec`` (ModelSpec enum)
+    Data modality specification. Options: ``"saxs"``, ``"les"``
+
+    - Determines default transformations and plot scaling
+
+``vae_class`` (string)
+    Registered VAE architecture class name. Available options:
+
+    - ``"ResVAE"`` - Residual VAE with skip connections (recommended)
+    - Check ``src/model/vae/submodel/registry.py`` for available models
+
+``args`` (dict)
+    Architecture-specific constructor arguments. **Varies by vae_class**.
+
+**Optional fields:**
+
+``beta`` (float, default: 1.0e-7)
+    β-VAE KL divergence scaling coefficient. Range: ``>= 0.0``
+
+    - Higher values enforce stronger disentanglement
+    - Lower values prioritize reconstruction quality
+
+``data_q`` (array, optional)
+    Q-values array. Usually loaded from checkpoint, not needed in config.
+
+``transforms_data`` (dict, optional)
+    Stored in checkpoint after training. See Dataset Configuration.
+
+``verbose`` (bool, default: True)
+    Enable configuration validation warnings.
+
+**ResVAE architecture arguments:**
+
+The ``args`` dict for ResVAE accepts:
+
+- ``in_channels`` (int): Input channels (typically 1 for spectra)
+- ``output_channels`` (int): Output channels (typically 1)
+- ``input_dim`` (int): Length of input spectrum (e.g., 1000)
+- ``latent_dim`` (int): Latent space dimensionality (e.g., 64, 128)
+- ``use_sigmoid`` (bool): Apply sigmoid to output (typically False)
+- ``down_channels`` (list[int]): Encoder channel progression
+- ``up_channels`` (list[int]): Decoder channel progression (typically reversed)
+
+Example configurations:
+
+.. code-block:: yaml
+
+   # Small model (fast, less capacity)
+   args:
+     latent_dim: 32
+     down_channels: [8, 16, 32, 64]
+     up_channels: [64, 32, 16, 8]
+
+   # Large model (slow, high capacity)
+   args:
      latent_dim: 128
-     encoder_layers: [512, 256, 128]
-     decoder_layers: [128, 256, 512]
-     activation: "relu"
-     dropout: 0.1
-     beta: 1.0  # KL divergence weight
+     down_channels: [16, 32, 64, 128, 256, 512]
+     up_channels: [512, 256, 128, 64, 32, 16]
 
-**VAE parameters:**
+PairVAE Models
+~~~~~~~~~~~~~~
 
-``type`` (string, required)
-    Must be ``"vae"`` for single-modality variational autoencoder.
-
-    .. note::
-       This parameter can be overridden using the ``--mode`` command-line argument when running ``03_train.py``. This allows you to switch between VAE and PairVAE models using the same configuration file by specifying ``--mode vae`` or ``--mode pair_vae``.
-
-``spec`` (string, required)
-    Data modality. Options: ``"saxs"``, ``"les"`` .
-
-``latent_dim`` (int, default: 128)
-    Dimensionality of the latent space.
-
-``encoder_layers`` (list, default: [512, 256, 128])
-    Layer sizes for the encoder network.
-
-``decoder_layers`` (list, default: [128, 256, 512])
-    Layer sizes for the decoder network.
-
-``activation`` (string, default: "relu")
-    Activation function. Options: ``"relu"``, ``"tanh"``, ``"sigmoid"``, ``"leaky_relu"``.
-
-``dropout`` (float, default: 0.1)
-    Dropout rate for regularization.
-
-``beta`` (float, default: 1.0)
-    Beta parameter for β-VAE. Controls the weight of KL divergence term.
-
-PairVAE model (multi-modality)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The PairVAE architecture is based on the methodology described in Lu and Jayaraman [1]_,
-which enables linking and cross-reconstruction between complementary structural
-characterization techniques like SAXS and LES.
-
-.. image:: pairschema.jpeg
-   :alt: PairVAE architecture schema
-   :align: center
-   :width: 600px
-
-The PairVAE consists of:
-
-- **Dual encoders**: Separate encoders for each modality (SAXS and LES) that map input data to a shared latent space
-- **Dual decoders**: Modality-specific decoders that reconstruct data within the same domain
-- **Cross-modal decoders**: Additional decoders that enable translation between modalities (SAXS↔LES)
-- **Shared latent space**: A common representation that captures the underlying physical properties
-
-This architecture allows for:
-
-1. **Intra-modal reconstruction**: Reconstructing SAXS from SAXS latent representation
-2. **Cross-modal translation**: Converting LES data to SAXS format and vice versa
-3. **Data completion**: Filling missing measurements from one technique using data from another
+Configuration class: ``PairVAEModelConfig`` (inherits from ``BaseModelConfig``)
 
 .. code-block:: yaml
 
    model:
-     type: "pair_vae"
-     latent_dim: 128
-     # Encoder configurations
-     encoder_saxs_layers: [512, 256, 128]
-     encoder_les_layers: [512, 256, 128]
-     # Decoder configurations
-     decoder_saxs_layers: [128, 256, 512]
-     decoder_les_layers: [128, 256, 512]
-     # Cross-modal decoders
-     cross_decoder_saxs_layers: [128, 256, 512]
-     cross_decoder_les_layers: [128, 256, 512]
-     activation: "relu"
-     dropout: 0.1
-     beta: 1.0
+     type: pair_vae
+     ckpt_path_saxs: runs/SAXS/saxs_baseline/best.ckpt
+     ckpt_path_les: runs/LES/les_baseline/best.ckpt
+     freeze_subvae: False
 
-**PairVAE parameters:**
+**Required fields:**
 
-``type`` (string, required)
-    Must be ``"pair_vae"`` for paired modality variational autoencoder.
+``type`` (ModelType enum)
+    Must be ``"pair_vae"`` for paired-modality VAE.
 
-``encoder_saxs_layers``, ``encoder_les_layers`` (list)
-    Layer sizes for SAXS and LES encoders respectively.
+``ckpt_path_saxs`` (string, optional but recommended)
+    Path to pretrained SAXS VAE checkpoint (``.ckpt`` file).
 
-``decoder_saxs_layers``, ``decoder_les_layers`` (list)
-    Layer sizes for SAXS and LES decoders respectively.
+    - If not provided, SAXS encoder/decoder are randomly initialized
+    - Checkpoint must contain a trained VAE model with spec=saxs
 
-``cross_decoder_saxs_layers``, ``cross_decoder_les_layers`` (list)
-    Layer sizes for cross-modal decoders (LES→SAXS and SAXS→LES).
+``ckpt_path_les`` (string, optional but recommended)
+    Path to pretrained LES VAE checkpoint (``.ckpt`` file).
 
-Dataset configuration
+    - If not provided, LES encoder/decoder are randomly initialized
+    - Checkpoint must contain a trained VAE model with spec=les
+
+**Optional fields:**
+
+``freeze_subvae`` (bool, default: False)
+    Freeze pretrained VAE weights during PairVAE training.
+
+    - ``True``: Only train cross-modal connections (faster, preserves pretrained quality)
+    - ``False``: Fine-tune entire model (slower, may improve alignment)
+
+.. important::
+   **Checkpoint requirements:**
+
+   The checkpoint files (``*.ckpt``) must be complete PyTorch Lightning checkpoints containing:
+
+   - Model state dict
+   - ``model_config`` with VAE configuration
+   - ``train_config`` with training settings
+   - ``transforms_data`` with transformation pipelines
+   - ``data_q`` array
+
+   These are automatically saved by AutoFill training runs.
+
+Dataset Configuration
 ---------------------
 
-Single modality dataset
-~~~~~~~~~~~~~~~~~~~~~~~
+Single-Modality HDF5 Dataset
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Configuration class: ``HDF5DatasetConfig`` (inherits from ``BaseDatasetConfig``)
 
 .. code-block:: yaml
 
    dataset:
-     h5_file_path: "data/all_data.h5"
-     requested_metadata: ["diameter_nm", "concentration_original", "material"]
-     exclude_columns: ["bad_column"]
-     max_length: 1000
-     min_length: 50
+     hdf5_file: DATA/cylinder_saxs_library_no_noise_meta_diameter_metric.h5
+     conversion_dict: null
+     metadata_filters: null
+     requested_metadata: null
+     use_data_q: False
+     transforms_data:
+       q:
+         PreprocessingQ:
+           pad_size: 1000
+       y:
+         PreprocessingSAXS:
+           pad_size: 1000
 
-**Dataset parameters:**
+**Required fields:**
 
-``h5_file_path`` (string, required)
-    Path to the HDF5 file containing the preprocessed data.
+``hdf5_file`` (string or Path)
+    Path to HDF5 dataset file. **Note**: Field name is ``hdf5_file``, not ``h5_file_path``.
 
-    .. note::
-       This parameter can be overridden using the ``--hdf5_file`` command-line argument when running ``03_train.py``. This allows you to use the same configuration file with different datasets without modifying the YAML file.
+    - Can be overridden with ``--hdf5_file`` command-line argument
+    - Must contain required datasets: ``data_q``, ``data_y``
 
-``requested_metadata`` (list, optional)
-    List of metadata columns to include. If not specified, includes all available metadata.
+**Optional fields:**
 
-``exclude_columns`` (list, optional)
-    List of column names to exclude from the dataset.
+``conversion_dict`` (dict, string, or Path, optional)
+    Metadata conversion dictionary for categorical variables.
 
-``max_length`` (int, optional)
-    Maximum length for time series padding/truncation.
+    - Can be a dict, path to JSON file, or null
+    - Maps categorical labels to numeric codes
 
-``min_length`` (int, optional)
-    Minimum length required for time series inclusion.
+``metadata_filters`` (dict, optional)
+    Filters to select specific samples based on metadata.
 
-Paired modality dataset
-~~~~~~~~~~~~~~~~~~~~~~~
+    Example:
 
-.. code-block:: yaml
+    .. code-block:: yaml
 
-   dataset:
-     h5_file_path: "data/pair_all_data.h5"
-     requested_metadata: ["diameter_nm", "concentration_original"]
-     max_length_saxs: 1000
-     max_length_les: 800
-     min_length_saxs: 50
-     min_length_les: 30
+       metadata_filters:
+         material: [0, 1]  # Keep only materials 0 and 1
+         diameter_nm: [10, 20, 30]  # Keep specific diameters
 
-**Additional PairVAE parameters:**
+``requested_metadata`` (list[str], optional)
+    Metadata columns to load. If null, loads all available metadata.
 
-``max_length_saxs``, ``max_length_les`` (int)
-    Maximum lengths for SAXS and LES modalities respectively.
+``use_data_q`` (bool, default: False)
+    Include q-values in batch outputs.
 
-``min_length_saxs``, ``min_length_les`` (int)
-    Minimum lengths for SAXS and LES modalities respectively.
+``transforms_data`` (dict, optional)
+    Transformation pipelines for q and y data.
 
-Training configuration
-----------------------
+    Structure:
 
-Basic training parameters
-~~~~~~~~~~~~~~~~~~~~~~~~~
+    .. code-block:: yaml
 
-.. code-block:: yaml
+       transforms_data:
+         q:  # Q-axis transformations
+           TransformerName:
+             param1: value1
+         y:  # Signal transformations
+           TransformerName:
+             param1: value1
 
-   training:
-     # Required
-     num_epochs: 100
-     array_train_indices: "data/train_indices.npy"
-     array_val_indices: "data/val_indices.npy"
-
-     # Optional
-     array_test_indices: "data/val_indices.npy"
-
-     # Optional with defaults
-     batch_size: 32
-     num_workers: 4
-     patience: 20
-     min_delta: 0.0001
-     save_every: 1
-
-     # Compute resources
-     num_gpus: 1
-     num_nodes: 1
-
-     # Output and logging
-     output_dir: "train_results"
-     use_loglog: true
-     plot_train: true
-     every_n_epochs: 10
-     num_samples: 10
-
-**Training parameters:**
-
-``num_epochs`` (int, required)
-    Maximum number of training epochs.
-
-``array_train_indices``, ``array_val_indices`` (string, required)
-    Paths to NumPy files containing train/validation split indices. 
-    If None, the HDF5 file will be split 80%/20%. Using data already used in training VAE to train PairVAE may therefore lead to Data Leak.
-
-``array_test_indices`` (string, optional)
-    Path to NumPy file containing test split indices. If None, no test set is used.
-
-``batch_size`` (int, default: 32)
-    Training batch size.
-
-``num_workers`` (int, default: 4)
-    Number of data loading workers.
-
-``patience`` (int, default: num_epochs // 5)
-    Early stopping patience (epochs without improvement).
-
-``min_delta`` (float, default: 0.0001)
-    Minimum change for early stopping criterion.
-
-``save_every`` (int, default: 1)
-    Save checkpoint every N epochs.
-
-``num_gpus`` (int, default: 1)
-    Number of GPUs to use for training.
-
-``num_nodes`` (int, default: 1)
-    Number of compute nodes (for distributed training).
-
-``output_dir`` (string, default: "train_results")
-    Base directory for saving training outputs.
-
-``use_loglog`` (bool, default: true)
-    Use log-log scale for validation plots.
-
-``plot_train`` (bool, default: true)
-    Generate training plots during validation.
-
-``every_n_epochs`` (int, default: 10)
-    Generate inference plots every N epochs.
-
-``num_samples`` (int, default: 10)
-    Number of samples to use for inference plots.
-
-Data transformations
---------------------
-
-Transform pipeline
-~~~~~~~~~~~~~~~~~~~
-
-.. code-block:: yaml
-
-   transforms_data:
-     q:
-       - type: "log10"
-       - type: "normalize"
-         method: "minmax"
-     y:
-       - type: "log10"
-       - type: "clip"
-         min_val: 1e-10
-         max_val: 1e10
-       - type: "normalize"
-         method: "standard"
+``verbose`` (bool, default: True)
+    Enable dataset validation warnings.
 
 **Available transformations:**
 
-``log10``
-    Apply base-10 logarithm transformation.
-
-``normalize``
-    Normalize data. Methods: ``"minmax"``, ``"standard"``, ``"robust"``.
-
-``clip``
-    Clip values to specified range with ``min_val`` and ``max_val``.
-
-``pad``
-    Pad sequences to specified ``length``.
-
-``truncate``
-    Truncate sequences to specified ``max_length``.
-
-Logging configuration
----------------------
-
-MLFlow logging
-~~~~~~~~~~~~~~
+For SAXS data (``y``):
 
 .. code-block:: yaml
 
-   # Enable MLFlow logging
-   mlflow_uri: "http://localhost:5000"
-   experiment_name: "saxs_experiments"
-   run_name: "baseline_run"
+   transforms_data:
+     y:
+       PreprocessingSAXS:
+         pad_size: 1000  # Pad/truncate to fixed length
+         value: 0        # Padding value
 
-.. note::
-    To use MLFlow for experiment tracking, provide the ``mlflow_uri`` parameter with the address of your MLFlow server.
-    Check MlFlow docs for setup instructions: https://mlflow.org/docs/3.1.3/ml/tracking/server/
+Preprocessing pipeline: Padding → EnsurePositive → Log → MinMaxScaler
 
-When ``mlflow_uri`` is provided, AutoFill will:
-
-- Log all hyperparameters and metrics to MLFlow
-- Upload model artifacts and plots
-- Track experiment lineage
-- Enable MLFlow UI for visualization
-
-TensorBoard logging (default)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-When ``mlflow_uri`` is **not** provided, AutoFill automatically uses TensorBoard:
-
-- Logs are saved to ``{output_dir}/{experiment_name}/{run_name}/``
-- Hyperparameters, metrics, and scalars are logged
-- View logs with: ``tensorboard --logdir=train_results``
-
-Example configurations
-----------------------
-
-Single modality VAE (SAXS)
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+For LES data (``y``):
 
 .. code-block:: yaml
 
-   experiment_name: "saxs_cylinder_ag"
-   run_name: "baseline_v1"
+   transforms_data:
+     y:
+       PreprocessingLES:
+         pad_size: 500
+         value: 0
 
-   model:
-     type: "vae"
-     latent_dim: 64
-     encoder_layers: [256, 128, 64]
-     decoder_layers: [64, 128, 256]
-     activation: "relu"
-     dropout: 0.15
-     beta: 1.0
+Preprocessing pipeline: Padding → MinMaxScaler
 
-   dataset:
-     h5_file_path: "data/saxs_data.h5"
-     requested_metadata: ["diameter_nm", "concentration_original"]
-     max_length: 512
+For Q-axis (``q``):
 
-   training:
-     num_epochs: 150
-     batch_size: 64
-     array_train_indices: "data/train_idx.npy"
-     array_val_indices: "data/val_idx.npy"
-     patience: 30
-     num_gpus: 1
-     output_dir: "experiments/saxs"
+.. code-block:: yaml
 
    transforms_data:
      q:
-       - type: "log10"
-       - type: "normalize"
-         method: "minmax"
-     y:
-       - type: "log10"
-       - type: "normalize"
-         method: "standard"
+       PreprocessingQ:
+         pad_size: 1000
+         value: 0
 
-Paired modality VAE
-~~~~~~~~~~~~~~~~~~~
+Preprocessing pipeline: Padding only
+
+Paired-Modality HDF5 Dataset
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Configuration class: ``PairHDF5DatasetConfig`` (inherits from ``BaseDatasetConfig``)
 
 .. code-block:: yaml
 
-   experiment_name: "multimodal_saxs_les"
-   run_name: "joint_training_v1"
-   mlflow_uri: "http://mlflow-server:5000"
-
-   model:
-     type: "pair_vae"
-     latent_dim: 128
-     encoder_saxs_layers: [512, 256, 128]
-     encoder_les_layers: [256, 128, 64]
-     decoder_saxs_layers: [128, 256, 512]
-     decoder_les_layers: [64, 128, 256]
-     cross_decoder_saxs_layers: [128, 256, 512]
-     cross_decoder_les_layers: [64, 128, 256]
-     activation: "relu"
-     dropout: 0.1
-     beta: 2.0
-
    dataset:
-     h5_file_path: "data/paired_data.h5"
-     requested_metadata: ["diameter_nm", "concentration_original", "material"]
-     max_length_saxs: 1000
-     max_length_les: 500
+     hdf5_file: DATA/pair_data.h5
+     conversion_dict: null
+     metadata_filters: null
+     requested_metadata: null
 
-   training:
-     num_epochs: 200
-     batch_size: 32
-     array_train_indices: "data/pair_train_idx.npy"
-     array_val_indices: "data/pair_val_idx.npy"
-     patience: 40
-     num_gpus: 2
-     every_n_epochs: 5
-     num_samples: 15
+**Required fields:**
+
+``hdf5_file`` (string or Path)
+    Path to paired HDF5 dataset.
+
+    Must contain datasets:
+
+    - ``data_q_saxs``, ``data_y_saxs``
+    - ``data_q_les``, ``data_y_les``
 
 .. note::
-   For detailed information about training outputs, directory structure, and monitoring options, see the tutorials section on training (Steps 3 and 5).
+   Transformations for PairVAE are loaded from the pretrained VAE checkpoints,
+   **not** from the dataset configuration. The transforms stored in
+   ``ckpt_path_saxs`` and ``ckpt_path_les`` are used automatically.
+
+Training Configuration
+----------------------
+
+Base Training Settings
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Configuration class: ``VAETrainingConfig`` or ``PairVAETrainingConfig`` (inherit from ``BaseTrainingConfig``)
+
+.. code-block:: yaml
+
+   training:
+     output_dir: runs/
+     num_epochs: 300
+     batch_size: 8
+     max_lr: 1.0e-04
+     patience: 40
+     num_gpus: 1
+     num_workers: 1
+
+     # Data splits
+     train_indices_path: DATA/train_pairs_saxs_les.npy
+     val_indices_path: DATA/val_pairs_saxs_les.npy
+     test_indices_path: DATA/test_pairs_saxs_les.npy
+
+     # Learning rate scheduler
+     warmup_epochs: 5
+     eta_min: 1.0e-15
+     min_delta: 0.0000001
+
+     # Inference callbacks
+     plot_train: True
+     plot_val: True
+     use_loglog: True
+     num_samples: 10
+     every_n_epochs: 10
+
+     # Loss weighting
+     weighted_loss: False
+     weighted_loss_limit_index: null
+     sample_frac: 1.0
+
+**Core training parameters:**
+
+``output_dir`` (string, default: "train_results")
+    Base directory for outputs. Final path: ``{output_dir}/{experiment_name}/{run_name}/``
+
+``num_epochs`` (int, default: 300, >= 1)
+    Maximum training epochs.
+
+``batch_size`` (int, default: 8, >= 1)
+    Batch size for training and validation.
+
+``max_lr`` (float, default: 1.0e-4, > 0)
+    Maximum learning rate for optimizer.
+
+``patience`` (int, default: 40, >= 0)
+    Early stopping patience (epochs without improvement).
+
+``num_gpus`` (int, default: 1, >= 0)
+    Number of GPUs to use. Set to 0 for CPU-only.
+
+``num_workers`` (int, default: 4, >= 0)
+    DataLoader workers. Set to 0 for single-threaded loading.
+
+**Data split parameters:**
+
+``train_indices_path`` (string or Path, optional)
+    Path to ``.npy`` file with training indices.
+
+    - If provided with ``val_indices_path``, uses precomputed splits
+    - If both are null, uses automatic 80/20 split
+    - **Important**: Use the same indices for VAE and PairVAE training to prevent data leakage
+
+``val_indices_path`` (string or Path, optional)
+    Path to ``.npy`` file with validation indices.
+
+``test_indices_path`` (string or Path, optional)
+    Path to ``.npy`` file with test indices.
+
+.. important::
+   **Index files must contain:**
+
+   - For single VAE: 1D array of integers (dataset indices)
+   - For PairVAE: Array of tuples ``(pair_idx, saxs_idx, les_idx)``
+
+   Load with: ``np.load(path, allow_pickle=True)``
+
+**Learning rate scheduler:**
+
+``warmup_epochs`` (int, default: 5, >= 0)
+    Number of epochs for linear warmup.
+
+``eta_min`` (float, default: 1.0e-15, >= 0)
+    Minimum learning rate for scheduler.
+
+``min_delta`` (float, default: 1.0e-7, >= 0)
+    Minimum change in validation loss for early stopping.
+
+**Callbacks and visualization:**
+
+``plot_train`` (bool, default: True)
+    Generate reconstruction plots from training set.
+
+``plot_val`` (bool, default: True)
+    Generate reconstruction plots from validation set.
+
+``use_loglog`` (bool, default: True)
+    Use log-log scale for plots (appropriate for SAXS).
+
+``num_samples`` (int, default: 10, >= 1)
+    Number of samples to plot.
+
+``every_n_epochs`` (int, default: 10, >= 1)
+    Plot frequency (in epochs).
+
+``save_every`` (int, default: 1, >= 1)
+    Checkpoint saving frequency (in epochs).
+
+**Loss configuration:**
+
+``weighted_loss`` (bool, default: False)
+    Enable weighted MSE loss.
+
+``weighted_loss_limit_index`` (int, optional)
+    Index where weights change. Points before this index get weight 10.0, after get 1.0.
+
+``sample_frac`` (float, default: 1.0, [0.0, 1.0])
+    Fraction of dataset to use (for debugging/fast iteration).
+
+PairVAE-Specific Training
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Configuration class: ``PairVAETrainingConfig``
+
+Additional fields for PairVAE:
+
+.. code-block:: yaml
+
+   training:
+     # ... base training parameters ...
+
+     # Barlow Twins loss
+     lambda_param: 0.005
+
+     # Loss component weights
+     weight_latent_similarity: 1.0
+     weight_saxs2saxs: 1.0
+     weight_les2les: 1.0
+     weight_saxs2les: 1.0
+     weight_les2saxs: 1.0
+
+``lambda_param`` (float, default: 0.005, >= 0)
+    Barlow Twins loss coefficient for latent space alignment.
+
+``weight_latent_similarity`` (float, default: 1.0, >= 0)
+    Weight for latent space similarity loss.
+
+``weight_saxs2saxs`` (float, default: 1.0, >= 0)
+    Weight for SAXS autoencoding reconstruction loss.
+
+``weight_les2les`` (float, default: 1.0, >= 0)
+    Weight for LES autoencoding reconstruction loss.
+
+``weight_saxs2les`` (float, default: 1.0, >= 0)
+    Weight for SAXS-to-LES translation loss.
+
+``weight_les2saxs`` (float, default: 1.0, >= 0)
+    Weight for LES-to-SAXS translation loss.
+
+**Total loss formula:**
+
+.. code-block:: text
+
+   total_loss =
+     weight_latent_similarity × latent_loss +
+     weight_saxs2saxs × saxs_recon_loss +
+     weight_les2les × les_recon_loss +
+     weight_saxs2les × saxs_to_les_loss +
+     weight_les2saxs × les_to_saxs_loss
+
+Command-Line Overrides
+----------------------
+
+The training script (``03_train.py``) accepts command-line arguments that override YAML config values:
+
+.. code-block:: bash
+
+   python scripts/03_train.py \
+     --config config/vae_saxs.yaml \
+     --mode vae \
+     --hdf5_file DATA/custom_data.h5 \
+     --name my_custom_run \
+     --dry-run
+
+**Available arguments:**
+
+``--config`` (required)
+    Path to YAML configuration file.
+
+``--mode`` (optional)
+    Override ``model.type``. Options: ``vae``, ``pair_vae``
+
+``--hdf5_file`` (optional)
+    Override ``dataset.hdf5_file``.
+
+``--name`` (optional)
+    Override ``run_name``.
+
+``--spec`` (optional)
+    Override ``model.spec``. Options: ``saxs``, ``les``, ``pair``
+
+``--conversion_dict_path`` (optional)
+    Override ``dataset.conversion_dict``.
+
+``--technique`` (optional)
+    Add metadata filter for technique.
+
+``--material`` (optional)
+    Add metadata filter for material.
+
+``--dry-run``
+    Validate configuration without starting training.
+
+``--verbose``
+    Enable verbose logging.
+
+``--gridsearch``
+    Run grid search using ``param_grid`` section.
+
+Example Complete Configurations
+--------------------------------
+
+SAXS VAE (Minimal)
+~~~~~~~~~~~~~~~~~~
+
+.. code-block:: yaml
+
+   experiment_name: AUTOFILL_SAXS
+   run_name: saxs_baseline
+
+   model:
+     type: vae
+     spec: saxs
+     vae_class: ResVAE
+     beta: 1.0e-7
+     args:
+       in_channels: 1
+       output_channels: 1
+       input_dim: 1000
+       latent_dim: 64
+       down_channels: [8, 16, 32, 64, 128, 256, 512]
+       up_channels: [512, 256, 128, 64, 32, 16, 8]
+
+   dataset:
+     hdf5_file: DATA/cylinder_saxs_library.h5
+     transforms_data:
+       y:
+         PreprocessingSAXS:
+           pad_size: 1000
+       q:
+         PreprocessingQ:
+           pad_size: 1000
+
+   training:
+     output_dir: runs/
+     num_epochs: 300
+     batch_size: 8
+     max_lr: 1.0e-04
+
+PairVAE (Complete)
+~~~~~~~~~~~~~~~~~~
+
+.. code-block:: yaml
+
+   experiment_name: MULTIMODAL
+   run_name: pairvae_baseline
+   mlflow_uri: https://mlflowts.irit.fr/
+
+   model:
+     type: pair_vae
+     ckpt_path_saxs: runs/SAXS/saxs_baseline/best.ckpt
+     ckpt_path_les: runs/LES/les_baseline/best.ckpt
+     freeze_subvae: False
+
+   dataset:
+     hdf5_file: DATA/pair_data.h5
+     train_indices_path: DATA/train_pairs_saxs_les.npy
+     val_indices_path: DATA/val_pairs_saxs_les.npy
+
+   training:
+     output_dir: runs/
+     num_epochs: 200
+     batch_size: 8
+     max_lr: 1.0e-05
+     patience: 20
+
+     lambda_param: 0.005
+     weight_latent_similarity: 1.0e-05
+     weight_les2les: 1.0
+     weight_les2saxs: 1.0
+     weight_saxs2les: 1.0
+     weight_saxs2saxs: 1.0
+
+Grid Search Configuration
+-------------------------
+
+Add a ``param_grid`` section to explore hyperparameters:
+
+.. code-block:: yaml
+
+   param_grid:
+     model.args.latent_dim: [32, 64, 128]
+     training.max_lr: [1.0e-03, 1.0e-04, 1.0e-05]
+     model.beta: [1.0e-05, 1.0e-06, 1.0e-07]
+
+Run with:
+
+.. code-block:: bash
+
+   python scripts/03_train.py --config config.yaml --gridsearch
 
 Troubleshooting
 ---------------
 
-Common configuration errors
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+**ValidationError during config loading:**
 
-.. warning::
-   Avoid these common configuration mistakes that can cause training failures:
+Check that all required fields are present and field names match exactly (e.g., ``hdf5_file``, not ``h5_file_path``).
 
-**Missing required parameters:**
+**Checkpoint loading errors:**
 
-.. code-block:: yaml
+Ensure checkpoint files contain all required keys:
 
-   # ❌ Missing required keys
-   experiment_name: "test"
+- ``model_config``
+- ``train_config``
+- ``state_dict``
+- ``transforms_data``
+- ``data_q``
 
-.. code-block:: yaml
+**Transform mismatch warnings:**
 
-   # ❌ Invalid model type
-   model:
-     type: "invalid_model"  # Must be "vae" or "pair_vae"
+PairVAE loads transforms from checkpoints. Ensure the pretrained VAE models were trained with compatible pad sizes.
 
-**Missing data files:**
+**Index file errors:**
 
-.. code-block:: yaml
+For PairVAE indices, ensure:
 
-   # ❌ File paths don't exist
-   dataset:
-     h5_file_path: "nonexistent/data.h5"
-   training:
-     array_train_indices: "missing/train.npy"
+.. code-block:: python
 
-**Resource conflicts:**
+   # Save indices with allow_pickle=True
+   np.save('indices.npy', indices_array, allow_pickle=True)
 
-.. code-block:: yaml
+   # Load with allow_pickle=True
+   indices = np.load('indices.npy', allow_pickle=True)
 
-   # ❌ Requesting more GPUs than available
-   training:
-     num_gpus: 8  # But only 2 GPUs available
-
-Tips
-~~~~
-
-.. tip::
-   **Performance optimization**
-
-   1. **Batch size**: Start with 32, increase if you have sufficient GPU memory
-   2. **Workers**: Set ``num_workers`` to number of CPU cores (typically 4-8)
-   3. **Patience**: Use 15-30% of total epochs for early stopping
-   4. **Checkpointing**: Save every 5-10 epochs for long training runs
-   5. **Logging frequency**: Use ``every_n_epochs: 5-10`` for frequent monitoring
-
-.. tip::
-   **Before training validation**
-
-   Before training, validate your configuration:
-
-   .. code-block:: bash
-
-      # Check data integrity using the project utility
-      python scripts/utils/H5_check.py /path/to/your/data.h5
-
-      # Dry run to check configuration
-      python scripts/03_train.py --config config/my_config.yaml --dry-run
-
-   You can also run a very small quick training of a single-modality VAE to verify end-to-end that datasets, transforms and logging work. Create a small config with ``model.type: "vae"``, reduce ``num_epochs`` (e.g. 2-5) and ``batch_size`` (e.g. 4-8) and run with ``--dry-run`` or on a single GPU.
-
-
-.. [1] Lu, S., & Jayaraman, A. (2023). Pair-Variational Autoencoders for Linking and Cross-Reconstruction of Characterization Data from Complementary Structural Characterization Techniques. *JACS Au*, 3(9), 2510-2521. DOI: 10.1021/jacsau.3c00275

@@ -36,7 +36,7 @@ class DatasetLoader:
         show_progressbar: bool = True,
     ):
         """Load dataset (H5 or CSV/TXT) with given Pipeline transformers."""
-        if data_path.endswith('.h5'):
+        if data_path.endswith('.h5', '.hdf5'):
             return DatasetLoader._load_h5_dataset(data_path, conversion_dict_path, transformer_q, transformer_y, show_progressbar)
         elif data_path.endswith('.csv'):
             return DatasetLoader._load_csv_dataset(data_path, data_dir, transformer_q, transformer_y)

@@ -147,7 +147,7 @@ Step 1 – Pairing HDF5 Converter (create paired dataset + shared splits)
 If you want to use the same datasets for training both the VAE and the PairVAE, use PairingHDF5Converter.
 This converter creates data splits (training/validation) before training the VAEs. These same splits are then reused for training the PairVAE, ensuring that training and validation subsets never overlap.
 The splits are save as ``.npy`` files that you need to inform in the ``.yaml`` training files as `array_train_indices` and `array_val_indices` for BOTH VAE training and PairVAE training to ensure that the rights splits are always used.
-There 
+
 **Command**
 
 .. code-block:: bash
@@ -166,6 +166,7 @@ There
 * ``--output_hdf5_filename`` – name of HDF5 file.
 * ``--split_val_ratio`` – split ratio >0 and <1.. => default 0.15.
 * ``--split_test_ratio`` – split ratio >0 and <1.. => default 0.05.
+* ``--no_progressbar`` – disable progress bars for cleaner logs (useful for batch jobs and redirected output).
 
 **Outputs**
 
@@ -246,16 +247,6 @@ single modality (for example SAXS).
       python scripts/utils/H5_check.py DATA/cylinder_les_meta.h5
 
    After verification, launch a simple VAE training (``vae`` mode).
-   To test the configuration without starting the actual training, use
-   ``--dry-run``; to start real training, remove ``--dry-run``:
-
-   .. code-block:: bash
-
-      # validate the configuration and paths without training
-      python scripts/03_train.py --config config/vae_les.yaml --mode vae --hdf5_file DATA/cylinder_les_meta.h5 --dry-run
-
-      # start a simple VAE training
-      python scripts/03_train.py --config config/vae_les.yaml --mode vae --hdf5_file DATA/cylinder_les_meta.h5
 
    See :doc:`configuration` for complete parameter reference and examples.
 
@@ -277,7 +268,7 @@ The training script accepts several command-line arguments that can override con
 * ``--technique`` – **Optional**: Filter the dataset to a specific acquisition technique.
 * ``--material`` – **Optional**: Filter the dataset to a specific material label.
 * ``--gridsearch`` – **Optional**: Run hyperparameter search instead of single training.
-* ``--dry-run`` – **Optional**: Validate configuration and check file paths without starting training.
+* ``--no_progressbar`` – disable progress bars for cleaner logs (useful for batch jobs and redirected output).
 * ``--verbose`` – **Optional**: Enable detailed logging output for debugging.
 
 **Examples**
@@ -334,26 +325,6 @@ The ``--hdf5_file`` and ``--mode`` arguments allow you to override configuration
      batch_size: 32
      # ... more parameters
 
-
-**Example configuration structure**::
-
-   experiment_name: "saxs_vae_experiment"
-   run_name: "baseline_run"
-
-   model:
-     type: "vae"  # Can be overridden with --mode
-     latent_dim: 128
-     # ... more parameters
-
-   dataset:
-     h5_file_path: "data/all_data.h5"  # Can be overridden with --hdf5_file
-     # ... more parameters
-
-   training:
-     num_epochs: 100
-     batch_size: 32
-     # ... more parameters
-
 For complete configuration examples and all available parameters, refer to :doc:`configuration`.
 
 **Outputs**
@@ -383,11 +354,11 @@ After training, you'll find the following structure:
        ├── val_plot.png            # Validation plots
        └── train_plot.png          # Training plots (if enabled)
 
-{output_dir}/{experiment_name}/
-    └── tensorboard_logs/
-        └── {run_name}
-            ├── hparams.yaml
-            └── events.out.tfevents.XXXXX
+   {output_dir}/{experiment_name}/
+       └── tensorboard_logs/
+           └── {run_name}
+               ├── hparams.yaml
+               └── events.out.tfevents.XXXXX
 
 
 **Model checkpoints**
@@ -527,7 +498,7 @@ For complete PairVAE configuration examples and all available parameters, refer 
 * Configuration backup for reproducibility
 
 .. note::
-   For detailed information about training outputs, directory structure, and monitoring options, see the training outputs section in Step 3.
+   For detailed information about training outputs, directory structure, and monitoring options, see the training outputs section in Step 2.
 
 Step 4 – Run inference
 ----------------------
@@ -535,136 +506,318 @@ Step 4 – Run inference
 **Why this matters:** generates reconstructions or translations from a trained
 checkpoint and saves the results for inspection.
 
-**Command**
+**Basic command (VAE)**
 
 .. code-block:: bash
 
    python scripts/05_infer.py \
-     --outputdir outputs/inference \
-     --checkpoint runs/pairvae/checkpoints/last.ckpt \
-     --data_path data/pair_all_data.h5 \
+     --outputdir outputs/vae_inference \
+     --checkpoint DATA/best_saxs.ckpt \
+     --data_path DATA/cylinder_saxs_library_no_noise_meta_diameter_metric.h5 \
+     --format h5 \
+     --plot \
+     --plot_limit 20
+
+**Basic command (PairVAE)**
+
+.. code-block:: bash
+
+   python scripts/05_infer.py \
+     --outputdir outputs/les_to_saxs \
+     --checkpoint DATA/best_pair+.ckpt \
+     --data_path DATA/cylinder_les_meta.h5 \
      --mode les_to_saxs \
-     --sample_frac 0.25 \
-     --plot
+     --sample_frac 100 \
+     --format txt \
+     --plot \
+     --plot_limit 20 \
+     --no_progressbar
 
 **Arguments**
 
-* ``--outputdir`` – directory where reconstructed arrays, CSV summaries, and
-  optional plots are stored. It will be created if missing.
-* ``--checkpoint`` – path to the ``.ckpt`` file saved during training.
-* ``--data_path`` – evaluation dataset. Use the HDF5 file for VAE models or the
-  paired HDF5 for PairVAE. You may also provide a metadata CSV when combined with
-  ``--data_dir``.
-* ``--mode`` – required when the checkpoint corresponds to a PairVAE. Choose the
-  direction to evaluate (e.g. ``les_to_saxs``).
-* ``--sample_frac`` – optional fraction (between 0 and 1) of the dataset used
-  during inference to save time.
-* ``--conversion_dict`` – optional path to the metadata mapping when working
-  with categorical labels.
-* ``--batch_size`` – number of samples processed per GPU/CPU batch. Increase it
-  cautiously to avoid out-of-memory errors.
+Required arguments:
+
+* ``-o``, ``--outputdir`` – directory where reconstructed arrays and plots are stored. Created automatically if missing.
+* ``-c``, ``--checkpoint`` – path to the ``.ckpt`` file saved during training.
+* ``-d``, ``--data_path`` – evaluation dataset. Use the HDF5 file for VAE models or the paired HDF5 for PairVAE. You may also provide a metadata CSV when combined with ``--data_dir``.
+
+PairVAE-specific arguments:
+
+* ``--mode`` – **required for PairVAE**. Translation mode to run: ``les_to_saxs``, ``saxs_to_les``, ``les_to_les``, or ``saxs_to_saxs``.
+
+Optional arguments:
+
+* ``-s``, ``--sample_frac`` – fraction or absolute count of the dataset to use:
+
+  * If ``< 1.0``: random fraction (e.g., ``0.25`` = 25% of data)
+  * If ``= 1.0``: full dataset (default)
+  * If ``> 1.0``: absolute number of samples (e.g., ``100`` = exactly 100 samples)
+
+* ``--format`` – output format for predictions: ``txt`` (individual files) or ``h5`` (single HDF5 file). Default: ``txt``.
+* ``--plot`` – save reconstruction plots alongside data outputs.
+* ``--plot_limit`` – maximum number of plots to save when ``--plot`` is enabled. Default: ``10``.
+* ``-bs``, ``--batch_size`` – number of samples processed per GPU/CPU batch. Default: ``32``. Increase cautiously to avoid out-of-memory errors.
+* ``--sample_seed`` – random seed for reproducible sampling. Default: ``1``.
+* ``--n_jobs_io`` – number of parallel workers for writing TXT files. Default: ``8``. Higher values speed up I/O for large datasets.
+* ``-p``, ``--no_progressbar`` – disable progress bars for cleaner logs (useful for batch jobs and redirected output).
+* ``-cd``, ``--conversion_dict`` – path to the metadata conversion dictionary if working with categorical labels.
+* ``-dd``, ``--data_dir`` – directory containing raw TXT files when ``--data_path`` points to a CSV file.
+
+**Examples**
+
+Full dataset inference with HDF5 output:
+
+.. code-block:: bash
+
+   python scripts/05_infer.py \
+     --outputdir outputs/full_inference \
+     --checkpoint runs/SAXS/best.ckpt \
+     --data_path DATA/test_data.h5 \
+     --format h5 \
+     --plot
+
+Random 25% subset with TXT output:
+
+.. code-block:: bash
+
+   python scripts/05_infer.py \
+     --outputdir outputs/sample_inference \
+     --checkpoint runs/SAXS/best.ckpt \
+     --data_path DATA/test_data.h5 \
+     --sample_frac 0.25 \
+     --format txt \
+     --sample_seed 42
+
+Exactly 100 samples for quick validation:
+
+.. code-block:: bash
+
+   python scripts/05_infer.py \
+     --outputdir outputs/quick_check \
+     --checkpoint runs/SAXS/best.ckpt \
+     --data_path DATA/test_data.h5 \
+     --sample_frac 100 \
+     --plot \
+     --plot_limit 5
+
+PairVAE translation with no progress bars (for batch scripts):
+
+.. code-block:: bash
+
+   python scripts/05_infer.py \
+     --outputdir outputs/les_to_saxs \
+     --checkpoint runs/PAIR/best.ckpt \
+     --data_path DATA/pair_data.h5 \
+     --mode les_to_saxs \
+     --format h5 \
+     --no_progressbar
 
 **Outputs**
 
-* ``outputs/inference/`` – contains reconstructed tensors, generated CSV files,
-  and optional ``.png`` plots when ``--plot`` is enabled.
-* Console messages confirming the model type and listing the saved artefacts.
+Depending on the ``--format`` argument:
+
+**HDF5 format** (``--format h5``):
+
+* ``predictions_{mode}.h5`` – single file containing:
+
+  * ``predictions``: inverted model predictions (N, signal_length)
+  * ``q``: q-values (N, q_length)
+  * ``latents``: latent representations (N, latent_dim) - VAE only
+  * ``indices``: sample indices used
+
+**TXT format** (``--format txt``):
+
+* ``predictions_{mode}/`` – directory with individual files:
+
+  * ``prediction_000000.txt`` – q-y paired columns for each sample
+  * Parallel I/O controlled by ``--n_jobs_io``
+
+**Plots** (when ``--plot`` is enabled):
+
+* ``plots_{mode}/`` – visualization directory:
+
+  * ``i000000_{mode}.png`` – reconstruction or translation plots
+  * Limited by ``--plot_limit`` to avoid generating thousands of files
+
+Console output includes:
+
+* Model type detection (VAE or PairVAE)
+* Data transformations being applied
+* Progress bars (unless ``--no_progressbar`` is set)
+* Output file paths
 
 .. tip::
 
-   * When evaluating from raw CSVs, use ``--data_dir`` to point to the folder with
-     the original ``.txt`` files.
-   * If you request ``--plot`` but see no figures, make sure Matplotlib is
-     installed in your environment.
+   * Use ``--format h5`` for large-scale inference (faster I/O, single file)
+   * Use ``--format txt`` when you need to integrate with external tools
+   * Use ``--no_progressbar`` in SLURM jobs or when redirecting output to files
+   * Use ``--sample_frac 0.1`` during development for quick iterations
+   * Use ``--sample_seed`` for reproducible sampling across runs
+   * Increase ``--n_jobs_io`` (e.g., 16) for faster TXT writing on systems with many cores
+
+.. note::
+   The inference script automatically detects:
+
+   * Model type (VAE or PairVAE) from the checkpoint
+   * Data modality (SAXS or LES) from model configuration
+   * Required transformations from checkpoint metadata
+   * Appropriate plot scaling (log-log for SAXS, linear for LES)
 
 Step 5 – Compute validation metrics and SASFit/LES analysis
 -----------------------------------------------------------
 
-**Why this matters:** summarises model quality and optionally runs SASFit to
+**Why this matters:** summarizes model quality and optionally runs SASFit to
 recover physical parameters.
 
-**Command**
+**Basic command (VAE)**
 
 .. code-block:: bash
 
    python scripts/06_val_metrics.py \
-     --checkpoint runs/vae/checkpoints/best.ckpt \
-     --data_path data/all_data.h5 \
-     --conversion_dict data/metadata_dict.json \
+     --checkpoint DATA/best_saxs.ckpt \
+     --data_path DATA/cylinder_saxs_library_no_noise_meta_diameter_metric.h5 \
      --outputdir outputs/vae_metrics \
      --eval_percentage 0.10 \
      --fit_percentage 0.005
-     --mode les_to_saxs
 
-**Arguments**
-
-* ``--checkpoint`` – checkpoint produced in Step 3 or Step 5.
-* ``--data_path`` – HDF5 dataset used for evaluation.
-* ``--outputdir`` – folder where metric summaries and fit details are
-  written.
-* ``--mode`` – required for PairVAE checkpoints; choose ``les_to_saxs``,
-  ``saxs_to_saxs``, ``les_to_les`` or ``saxs_to_les`` to control the
-  evaluation direction. Reconstruction metrics are only produced when the
-  input and output domains match (``les_to_les`` ou ``saxs_to_saxs``).
-* ``--conversion_dict`` – same JSON produced during conversion; required to
-  decode categorical labels.
-* ``--eval_percentage`` – fraction of samples evaluated when computing MAE, MSE,
-  RMSE, and R² (``0.10`` = 10%).
-* ``--fit_percentage`` – fraction of samples passed to the physical fit (SASFit
-  ou LES). Keep it small because curve fitting is slow.
-* ``--n_processes`` – optional cap on the number of parallel workers. By
-  default, the script utilise ``joblib.Parallel`` avec ``n_cpu - 1``.
-* ``--random_state`` – ensures reproducible sampling between runs.
-
-**Outputs**
-
-* ``validation_metrics.yaml`` – machine-readable metrics alongside the training
-  hyperparameters et l’état de chaque étape.
-* ``metrics_summary.txt`` – human-readable recap of the evaluation, incluant le
-  statut des reconstructions et le nombre d’échecs lors des fits.
-* ``reconstruction_metrics_detailed.csv`` – per-sample scores when
-  reconstructions are available.
-* ``fit_detailed_results.csv`` – fitted parameters and absolute errors for each
-  processed sample.
-
-.. tip::
-
-   * Si SASFit n’est pas installé, lancez le script avec ``--fit_percentage 0``
-     pour ignorer les ajustements physiques.
-   * Lower ``--eval_percentage`` if you are prototyping and want faster feedback.
-
-(Optional) Run a grid search
--------------------------------------
-
-**Why this matters:** sweeps multiple hyper-parameter combinations to discover
-stronger configurations automatically.
-
-**Command**
+**Basic command (PairVAE)**
 
 .. code-block:: bash
 
-   python scripts/03_train.py \
-     --mode vae \
-     --gridsearch \
-     --config configs/vae_grid.yml
+   python scripts/06_val_metrics.py \
+     --checkpoint DATA/best_pair.ckpt \
+     --data_path DATA/pair_data.h5 \
+     --outputdir outputs/pair_metrics \
+     --mode saxs_to_saxs \
+     --eval_percentage 0.10 \
+     --fit_percentage 0.005 \
+     --no_progressbar
 
 **Arguments**
 
-* ``--gridsearch`` – toggles grid-search mode. The script reads search spaces
-  from the YAML file and launches multiple experiments.
-* ``--config`` – YAML file defining both the baseline configuration and the
-  parameter ranges to explore.
-* All other arguments described in Step 3 remain available to override defaults.
+Required arguments:
+
+* ``-c``, ``--checkpoint`` – path to the checkpoint file produced during training.
+* ``-d``, ``--data_path`` – HDF5 dataset used for evaluation.
+* ``-o``, ``--outputdir`` – folder where metric summaries and fit details are written.
+
+PairVAE-specific arguments:
+
+* ``--mode`` – required for PairVAE. Evaluation mode: ``les_to_saxs``, ``saxs_to_les``, ``les_to_les``, or ``saxs_to_saxs``. Reconstruction metrics are only computed when input and output domains match (``les_to_les`` or ``saxs_to_saxs``).
+
+Optional arguments:
+
+* ``--eval_percentage`` – fraction of samples to evaluate for reconstruction metrics (MAE, MSE, RMSE, R²). Default: ``0.05`` (5%).
+* ``--fit_percentage`` – fraction of samples to pass to physical fitting (SASFit or LES). Default: ``0.05`` (5%). Keep small because curve fitting is slow.
+* ``--batch_size`` – inference batch size. Default: ``32``.
+* ``--signal_length`` – forced signal length for reconstruction. Default: ``1000``.
+* ``--qmin_fit`` – minimum q value for fitting. Default: ``0.001``.
+* ``--qmax_fit`` – maximum q value for fitting. Default: ``0.5``.
+* ``--factor_scale_to_conc`` – scaling factor to convert to concentration. Default: ``20878``.
+* ``--n_processes`` – number of parallel workers for fitting. Default: uses all available CPUs minus 1.
+* ``--random_state`` – random seed for reproducible sampling. Default: ``42``.
+* ``-p``, ``--no_progressbar`` – disable progress bars for cleaner logs.
+* ``-cd``, ``--conversion_dict`` – path to metadata conversion dictionary for categorical labels.
+
+**Examples**
+
+Quick validation with 5% of data:
+
+.. code-block:: bash
+
+   python scripts/06_val_metrics.py \
+     --checkpoint runs/SAXS/best.ckpt \
+     --data_path DATA/test_data.h5 \
+     --outputdir outputs/quick_metrics \
+     --eval_percentage 0.05 \
+     --fit_percentage 0.01
+
+Full evaluation without physical fitting:
+
+.. code-block:: bash
+
+   python scripts/06_val_metrics.py \
+     --checkpoint runs/SAXS/best.ckpt \
+     --data_path DATA/test_data.h5 \
+     --outputdir outputs/full_metrics \
+     --eval_percentage 1.0 \
+     --fit_percentage 0
+
+PairVAE reconstruction metrics only:
+
+.. code-block:: bash
+
+   python scripts/06_val_metrics.py \
+     --checkpoint runs/PAIR/best.ckpt \
+     --data_path DATA/pair_data.h5 \
+     --outputdir outputs/pair_reconstruction \
+     --mode les_to_les \
+     --eval_percentage 0.10 \
+     --fit_percentage 0
+
+Batch mode with no progress bars:
+
+.. code-block:: bash
+
+   python scripts/06_val_metrics.py \
+     --checkpoint runs/SAXS/best.ckpt \
+     --data_path DATA/test_data.h5 \
+     --outputdir outputs/batch_metrics \
+     --no_progressbar \
+     --random_state 42
 
 **Outputs**
 
-* A directory per trial under the location configured in the YAML file, each
-  containing checkpoints and metric summaries.
-* A console table summarising the hyper-parameter combinations that were
-  tried.
+The validation script generates the following files in the output directory:
+
+``validation_metrics.yaml``
+    Machine-readable metrics including:
+
+    - Training hyperparameters
+    - Reconstruction metrics (MAE, MSE, RMSE, R²)
+    - Fitting results summary
+    - Status of each validation stage
+
+``metrics_summary.txt``
+    Human-readable summary including:
+
+    - Model configuration
+    - Reconstruction quality metrics
+    - Fitting success/failure counts
+    - Overall validation status
+
+``reconstruction_metrics_detailed.csv``
+    Per-sample reconstruction scores (when applicable):
+
+    - Sample index
+    - MAE, MSE, RMSE per sample
+    - R² score per sample
+
+``fit_detailed_results.csv``
+    Fitted parameters and errors for each sample:
+
+    - Physical parameters recovered by SASFit/LES fitting
+    - Absolute errors compared to ground truth
+    - Fit quality indicators
+
+Console output includes:
+
+* Validation progress (unless ``--no_progressbar`` is set)
+* Metric computation status
+* Summary of results
+* Output file locations
 
 .. tip::
 
-   * Start with small ranges to keep the number of experiments manageable.
-   * Check the generated log files to identify the best trial and replicate it
-     using the single-run command from Step 3 or Step 5.
+   * Start with small percentages (5-10%) for quick feedback during development
+   * Use ``--fit_percentage 0`` if SASFit is not installed or you only need reconstruction metrics
+   * Use ``--no_progressbar`` in SLURM jobs or automated pipelines
+   * Set ``--random_state`` for reproducible metrics across runs
+   * Increase ``--eval_percentage`` to ``1.0`` for final model evaluation
+   * For PairVAE, use matching modes (``les_to_les`` or ``saxs_to_saxs``) to get reconstruction metrics
+
+.. note::
+   * Reconstruction metrics (MAE, MSE, RMSE, R²) are only computed when the input and output domains match
+   * For PairVAE cross-domain translations (``les_to_saxs`` or ``saxs_to_les``), only fitting metrics are available
+   * Physical fitting is computationally expensive; adjust ``--fit_percentage`` based on available time and resources
+

@@ -191,13 +191,6 @@ Grid Search
    :undoc-members:
    :show-inheritance:
 
-Inference Helpers
------------------
-
-.. automodule:: src.model.inferencer
-   :members:
-   :undoc-members:
-   :show-inheritance:
 
 
 Callbacks

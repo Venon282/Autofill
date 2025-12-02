@@ -88,6 +88,7 @@ Documentation structure
 - :doc:`configuration` - **Essential reference** for all training parameters
 - :doc:`data_formats` - HDF5 file structures and data organization
 - :doc:`tutorials` - Step-by-step workflows with command examples
+- :doc:`deep_learning_notes` - Theoretical background on models and losses
 - :doc:`api` - API reference for developers
 
 Next steps
