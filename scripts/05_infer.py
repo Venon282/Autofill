@@ -119,7 +119,7 @@ def main() -> None:
         raise ValueError("Please provide the translation mode for the PairVAE model. (--mode)")
     if model_type == ModelType.VAE and args.mode is not None:
         raise ValueError("The --mode argument is only applicable for PairVAE models.")
-    if args.data_dir and args.data_path.endswith(".h5"):
+    if args.data_dir and args.data_path.endswith((".h5", ".hdf5")):
         raise ValueError("Provide either a data path or a data directory, not both.")
     if args.data_dir and not args.data_path.endswith(".csv"):
         raise ValueError("When --data_dir is set, --data_path must point to a CSV file.")
