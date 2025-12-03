@@ -255,9 +255,14 @@ class PlPairVAE(pl.LightningModule):
 
         def _restore_vae(entry):
             from src.model.vae.pl_vae import PlVAE
-
-            model_cfg = VAEModelConfig(**entry["model_config"])
-            train_cfg = VAETrainingConfig(**entry["train_config"])
+            try:
+                model_cfg = VAEModelConfig(**entry["vae_model_config"])
+            except KeyError:
+                 model_cfg = VAEModelConfig(**entry["model_config"])
+            try:
+                train_cfg = VAETrainingConfig(**entry["vae_train_config"])
+            except KeyError:
+                train_cfg = VAETrainingConfig(**entry["train_config"])
             vae = PlVAE(model_config=model_cfg, train_config=train_cfg)
             return vae
 

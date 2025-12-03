@@ -752,11 +752,15 @@ PairVAE reconstruction metrics only:
 
    python scripts/06_val_metrics.py \
      --checkpoint runs/PAIR/best.ckpt \
-     --data_path DATA/pair_data.h5 \
+     --data_path DATA/test_data.h5 \
      --outputdir outputs/pair_reconstruction \
      --mode les_to_les \
      --eval_percentage 0.10 \
      --fit_percentage 0
+
+.. important::
+    For PairVAE input dataset must be single-modality HDF5 (e.g., LES-only for ``les_to_les`` mode).
+    Input domain must match output domain to compute reconstruction metrics.
 
 Batch mode with no progress bars:
 

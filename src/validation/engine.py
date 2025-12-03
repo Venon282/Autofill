@@ -926,6 +926,11 @@ def ValidationEngine(**kwargs: Any) -> BaseValidationEngine:
 
     checkpoint_path = kwargs["checkpoint_path"]
     config = _load_config(checkpoint_path)
+    try:
+        if "model_config" not in config and "pairvae_model_config" in config:
+            config["model_config"] = config["pairvae_model_config"]
+    except Exception as e:
+        raise ValueError("Failed to load model configuration from checkpoint.") from e
     model_type = config["model_config"]["type"].lower()
 
     if model_type == "vae":
