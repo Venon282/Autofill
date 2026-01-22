@@ -55,13 +55,13 @@ def check_config_integrity(config: dict[str, Any], verbose: bool = True) -> bool
 
     try:
         if model_type == ModelType.VAE:
-            model_cfg = VAEModelConfig(**config["model"], verbose=verbose)
-            train_cfg = VAETrainingConfig(**config["training"], verbose=verbose)
-            dataset_cfg = HDF5DatasetConfig(**config["dataset"], verbose=verbose)
+            model_cfg = VAEModelConfig(**{k:v for k, v in config["model"].items() if k!='verbose'}, verbose=verbose)
+            train_cfg = VAETrainingConfig(**{k:v for k, v in config["training"].items() if k!='verbose'}, verbose=verbose)
+            dataset_cfg = HDF5DatasetConfig(**{k:v for k, v in config["dataset"].items() if k!='verbose'}, verbose=verbose)
         elif model_type == ModelType.PAIR_VAE:
-            model_cfg = PairVAEModelConfig(**config["model"])
-            train_cfg = PairVAETrainingConfig(**config["training"], verbose=verbose)
-            dataset_cfg = PairHDF5DatasetConfig(**config["dataset"], verbose=verbose)
+            model_cfg = PairVAEModelConfig(**{k:v for k, v in config["model"].items() if k!='verbose'}, verbose=verbose)
+            train_cfg = PairVAETrainingConfig(**{k:v for k, v in config["training"].items() if k!='verbose'}, verbose=verbose)
+            dataset_cfg = PairHDF5DatasetConfig(**{k:v for k, v in config["dataset"].items() if k!='verbose'}, verbose=verbose)
         else:
             raise ValueError(f"Unsupported model type: {model_type}")
     except Exception as e:
