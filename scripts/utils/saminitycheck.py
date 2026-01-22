@@ -55,7 +55,7 @@ def check_paths(csv_path: Path, base_dir: Path) -> dict[str, list[str]]:
         preview = [str(p) for p in paths.head(5) if p is not None]
         logger.info("First few entries: %s...", preview)
 
-        for rel_path in tqdm(paths, desc=f"Verifying ({column})"):
+        for rel_path in tqdm(paths, desc=f"Verifying ({column})", mininterval=1, miniters=min(10_000, max(1, len(paths) // 100))):
             if rel_path is None:
                 continue
             cleaned = rel_path.as_posix().lstrip("/")
