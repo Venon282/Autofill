@@ -103,7 +103,7 @@ pip install -e ".[docs]"  # Que pour Linux
 ```
 
 ### 2. Activer l’environnement
-
+> Sur Linux :
 ```bash
 source .venv/bin/activate
 ```
@@ -111,7 +111,10 @@ ou sur PowerShell
 ```bash
 ./.venv/bin/activate
 ```
-
+> Sur Windows :
+```bash
+.\.venv\Scripts\activate
+```
 
 ### 3. Générer la documentation
 
