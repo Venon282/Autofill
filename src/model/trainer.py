@@ -6,6 +6,7 @@ import yaml
 import torch
 import numpy as np
 import lightning.pytorch as pl
+from lightning.pytorch.strategies import DDPStrategy
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from lightning.pytorch.loggers import MLFlowLogger, TensorBoardLogger
 import json
@@ -30,6 +31,9 @@ from src.logging_utils import get_logger
 
 logger = get_logger(__name__, custom_name="TRAINER")
 torch.set_float32_matmul_precision("high")
+
+os.environ["NCCL_IB_DISABLE"] = "1" # Force NCCL to ignore network interfaces that might cause issues
+os.environ["NCCL_DEBUG"] = "INFO" # Print why it crash
 
 #region Base Train Pipeline
 class BaseTrainPipeline:
@@ -98,7 +102,15 @@ class BaseTrainPipeline:
         logger_obj.log_hyperparams(self.dataset_cfg.model_dump(exclude={"transforms_data", "verbose"}))
 
         callbacks = [early_stop, checkpoint] + self.extra_callback_list
-        strategy = "ddp" if torch.cuda.device_count() > 1 else "auto"
+        if torch.cuda.device_count() > 1:
+            strategy = DDPStrategy(
+                process_group_backend="nccl", 
+                find_unused_parameters=False, # Set to True if VAE have conditional branches
+                start_method="spawn" 
+            )
+        else:
+            strategy = "auto"
+        #strategy = "ddp" if torch.cuda.device_count() > 1 else "auto"
         accelerator = "gpu" if torch.cuda.is_available() else "cpu"
         devices = self.train_cfg.num_gpus if torch.cuda.is_available() else 1
 
@@ -325,7 +337,6 @@ class PairVAEPipeline(BaseTrainPipeline):
 #region Pipeline Factory
 def make_trainer(config: dict, verbose=False, show_progressbar=False) -> BaseTrainPipeline:
     """Factory to create the appropriate training pipeline."""
-
     required_keys = ["model", "training", "dataset", "experiment_name"]
     missing = [k for k in required_keys if k not in config]
     if missing:
