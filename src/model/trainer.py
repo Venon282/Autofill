@@ -37,6 +37,7 @@ os.environ["NCCL_DEBUG"] = "INFO" # Print why it crash
 
 class EpochLogger(Callback):
     """Print a single line of metrics at the end of each epoch, Keras style."""
+    @rank_zero_only
     def on_epoch_end(self, trainer, pl_module):
         # Get only epoch-level metrics
         metrics = {k: v.item() if isinstance(v, torch.Tensor) else v
@@ -46,6 +47,10 @@ class EpochLogger(Callback):
         # Format metrics nicely
         metrics_str = ", ".join(f"{k}={v:.4f}" for k, v in metrics.items())
         print(f"Epoch {trainer.current_epoch + 1}/{trainer.max_epochs}: {metrics_str}")
+        
+        # Log to Lightning logger (TensorBoard / MLFlow / etc)
+        if trainer.logger:
+            trainer.logger.log_metrics(metrics, step=trainer.current_epoch)
         
 #region Base Train Pipeline
 class BaseTrainPipeline:
