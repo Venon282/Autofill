@@ -7,7 +7,7 @@ import torch
 import numpy as np
 import lightning.pytorch as pl
 from lightning.pytorch.strategies import DDPStrategy
-from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
+from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, Callback
 from lightning.pytorch.loggers import MLFlowLogger, TensorBoardLogger
 import json
 from pydantic.json import pydantic_encoder
@@ -35,6 +35,18 @@ torch.set_float32_matmul_precision("high")
 os.environ["NCCL_IB_DISABLE"] = "1" # Force NCCL to ignore network interfaces that might cause issues
 os.environ["NCCL_DEBUG"] = "INFO" # Print why it crash
 
+class EpochLogger(Callback):
+    """Print a single line of metrics at the end of each epoch, Keras style."""
+    def on_epoch_end(self, trainer, pl_module):
+        # Get only epoch-level metrics
+        metrics = {k: v.item() if isinstance(v, torch.Tensor) else v
+                   for k, v in trainer.callback_metrics.items()
+                   if not k.startswith("train_step") and not k.startswith("val_step")}
+
+        # Format metrics nicely
+        metrics_str = ", ".join(f"{k}={v:.4f}" for k, v in metrics.items())
+        print(f"Epoch {trainer.current_epoch + 1}/{trainer.max_epochs}: {metrics_str}")
+        
 #region Base Train Pipeline
 class BaseTrainPipeline:
     """Base pipeline handling shared logic for model training."""
@@ -96,12 +108,19 @@ class BaseTrainPipeline:
                 name=self.experiment_name,
                 version=self.run_name,
             )
+        
+
 
         logger_obj.log_hyperparams(self.train_cfg.model_dump(exclude={"verbose"}))
         logger_obj.log_hyperparams(self.model_cfg.model_dump(exclude={"transforms_data", "data_q", "verbose"}))
         logger_obj.log_hyperparams(self.dataset_cfg.model_dump(exclude={"transforms_data", "verbose"}))
 
         callbacks = [early_stop, checkpoint] + self.extra_callback_list
+        
+        # If no progress bar print one line by epochs
+        if not self.show_progressbar:
+            callbacks.append(EpochLogger())
+            
         if torch.cuda.device_count() > 1:
             strategy = DDPStrategy(
                 process_group_backend="nccl", 
