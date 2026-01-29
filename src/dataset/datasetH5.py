@@ -1,4 +1,6 @@
 """PyTorch dataset for single-spectrum HDF5 files."""
+import os
+os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
 
 import json
 import warnings
@@ -104,7 +106,7 @@ class HDF5Dataset(Dataset):
     def hdf(self):
         """Lazy loader for the HDF5 file handle."""
         if self._hdf_handle is None:
-            self._hdf_handle = h5py.File(self.hdf5_file, 'r', swmr=True)
+            self._hdf_handle = h5py.File(self.hdf5_file, 'r', swmr=True, libver='latest')
         return self._hdf_handle
 
     def _print_init_info(self):

@@ -24,3 +24,4 @@ Mat_Cext_Ag_cylinder
 config_locales/
 train_results/
 config/*
+todo.md

@@ -9,6 +9,7 @@ import lightning.pytorch as pl
 from lightning.pytorch.strategies import DDPStrategy
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, Callback
 from lightning.pytorch.loggers import MLFlowLogger, TensorBoardLogger
+from lightning.pytorch.utilities.rank_zero import rank_zero_only
 import json
 from pydantic.json import pydantic_encoder
 from torch.utils.data import DataLoader, random_split
@@ -38,19 +39,25 @@ os.environ["NCCL_DEBUG"] = "INFO" # Print why it crash
 class EpochLogger(Callback):
     """Print a single line of metrics at the end of each epoch, Keras style."""
     @rank_zero_only
-    def on_epoch_end(self, trainer, pl_module):
+    def on_train_epoch_end(self, trainer, pl_module):
         # Get only epoch-level metrics
-        metrics = {k: v.item() if isinstance(v, torch.Tensor) else v
-                   for k, v in trainer.callback_metrics.items()
-                   if not k.startswith("train_step") and not k.startswith("val_step")}
-
-        # Format metrics nicely
-        metrics_str = ", ".join(f"{k}={v:.4f}" for k, v in metrics.items())
-        print(f"Epoch {trainer.current_epoch + 1}/{trainer.max_epochs}: {metrics_str}")
+        metrics = trainer.callback_metrics
         
-        # Log to Lightning logger (TensorBoard / MLFlow / etc)
-        if trainer.logger:
-            trainer.logger.log_metrics(metrics, step=trainer.current_epoch)
+        formatted_metrics = []
+        for k, v in metrics.items():
+            # Remove the step values metrics
+            if "_step" in k:
+                continue
+            
+            if isinstance(v, torch.Tensor):
+                v = v.item()
+                
+            formatted_metrics.append(f"{k}: {v}")
+
+        metrics_str = " - ".join(formatted_metrics)
+        epoch_str = f"Epoch {trainer.current_epoch + 1}/{trainer.max_epochs}"
+        
+        print(f"{epoch_str} - {metrics_str}", flush=True)
         
 #region Base Train Pipeline
 class BaseTrainPipeline:
@@ -126,17 +133,19 @@ class BaseTrainPipeline:
         if not self.show_progressbar:
             callbacks.append(EpochLogger())
             
-        if torch.cuda.device_count() > 1:
+        if self.train_cfg.num_gpus > 1:
             strategy = DDPStrategy(
                 process_group_backend="nccl", 
-                find_unused_parameters=False, # Set to True if VAE have conditional branches
+                find_unused_parameters=True, # Set to True if VAE have conditional branches
                 start_method="spawn" 
             )
         else:
             strategy = "auto"
+            
+
         #strategy = "ddp" if torch.cuda.device_count() > 1 else "auto"
-        accelerator = "gpu" if torch.cuda.is_available() else "cpu"
-        devices = self.train_cfg.num_gpus if torch.cuda.is_available() else 1
+        accelerator = "auto" #"gpu" if torch.cuda.is_available() else "cpu"
+        devices = self.train_cfg.num_gpus if self.train_cfg.num_gpus > 0 else 1 #torch.cuda.is_available() else 1
 
         return pl.Trainer(
             strategy=strategy,
