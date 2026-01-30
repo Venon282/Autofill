@@ -136,7 +136,7 @@ class BaseTrainPipeline:
         if self.train_cfg.num_gpus > 1:
             strategy = DDPStrategy(
                 process_group_backend="nccl", 
-                find_unused_parameters=True, # Set to True if VAE have conditional branches
+                find_unused_parameters=True,
                 start_method="spawn" 
             )
         else:

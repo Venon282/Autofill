@@ -286,8 +286,8 @@ class PlPairVAE(pl.LightningModule):
 
     def on_save_checkpoint(self, checkpoint):
         """Save sub-VAEs configuration for reconstruction on load."""
-        checkpoint["model_config"] = self.model_cfg.model_dump()
-        checkpoint["train_config"] = self.train_cfg.model_dump()
+        checkpoint["model_config"] = self.model_cfg.model_dump(mode="json")
+        checkpoint["train_config"] = self.train_cfg.model_dump(mode="json")
 
         if hasattr(self, "global_config"):
             checkpoint["global_config"] = self.global_config
@@ -301,8 +301,8 @@ class PlPairVAE(pl.LightningModule):
 
         def _extract_vae_info(vae):
             return {
-                "model_config": vae.model_cfg.model_dump(),
-                "train_config": vae.train_cfg.model_dump(),
+                "model_config": vae.model_cfg.model_dump(mode="json"),
+                "train_config": vae.train_cfg.model_dump(mode="json"),
             }
 
         checkpoint["vae_saxs"] = _extract_vae_info(self.model.vae_saxs)
