@@ -113,7 +113,8 @@ class ModelLoader:
     def _load_vae(checkpoint_path: str, device: str):
         """Load VAE model."""
         from src.model.vae.pl_vae import PlVAE
-        model = PlVAE.load_from_checkpoint(checkpoint_path, map_location=device)
+        with torch.serialization.safe_globals([ModelType, ModelSpec]):
+            model = PlVAE.load_from_checkpoint(checkpoint_path, map_location=device)
         model.eval()
         return model
 
@@ -121,7 +122,8 @@ class ModelLoader:
     def _load_pairvae(checkpoint_path: str, device: str):
         """Load PairVAE model."""
         from src.model.pairvae.pl_pairvae import PlPairVAE
-        model = PlPairVAE.load_from_checkpoint(checkpoint_path, map_location=device)
+        with torch.serialization.safe_globals([ModelType, ModelSpec, np._core.multiarray._reconstruct, np.ndarray, np.dtype]):
+            model = PlPairVAE.load_from_checkpoint(checkpoint_path, map_location=device)
         model.eval()
         return model
 # endregion
