@@ -60,7 +60,9 @@ class PlVAE(pl.LightningModule):
             ) from e
 
         if not force_dataset_q and model_config.data_q is not None:
-            self.data_q = torch.tensor(model_config.data_q, dtype=torch.float32)
+            tensor_q = torch.tensor(model_config.data_q, dtype=torch.float32)
+            self.data_q = tensor_q
+            self.model_cfg.data_q = tensor_q.tolist()
 
         # self.save_hyperparameters({
         #     "model_config": model_config.model_dump(),
@@ -218,9 +220,11 @@ class PlVAE(pl.LightningModule):
 
     def on_save_checkpoint(self, checkpoint):
         """Save a clean, reproducible state including configs, data_q, and transforms."""
-        # checkpoint.clear()
-        checkpoint["model_config"] = self.model_cfg.model_dump()
-        checkpoint["train_config"] = self.train_cfg.model_dump()
+        model_cfg = self.model_cfg.model_dump(mode="json")  
+        train_cfg = self.train_cfg.model_dump(mode="json")
+        checkpoint.clear()
+        checkpoint["model_config"] =  model_cfg
+        checkpoint["train_config"] =  train_cfg
         checkpoint["state_dict"] = self.state_dict()
         if hasattr(self, 'global_config'):
             checkpoint["global_config"] = self.global_config
