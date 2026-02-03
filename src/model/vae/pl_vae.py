@@ -222,7 +222,7 @@ class PlVAE(pl.LightningModule):
         """Save a clean, reproducible state including configs, data_q, and transforms."""
         model_cfg = self.model_cfg.model_dump(mode="json")  
         train_cfg = self.train_cfg.model_dump(mode="json")
-        checkpoint.clear()
+        # checkpoint.clear()
         checkpoint["model_config"] =  model_cfg
         checkpoint["train_config"] =  train_cfg
         checkpoint["state_dict"] = self.state_dict()
