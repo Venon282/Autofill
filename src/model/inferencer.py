@@ -156,6 +156,7 @@ class InferenceEngine:
         'latents', 'indices', 'mode'.
         """
         predictions = []
+        originals = []
         latents = []
         indices = []
         q_values = []
@@ -183,8 +184,11 @@ class InferenceEngine:
 
                 if 'data_index' in batch:
                     indices.append(batch['data_index'].cpu().numpy())
+                    
+                originals.append(batch['data_y_untransformed'].cpu().numpy())
 
         predictions_concat = np.concatenate(predictions, axis=0) if predictions else np.empty((0,))
+        originals_concat = np.concatenate(originals, axis=0) if originals else np.empty((0,))
         latents_concat = np.concatenate(latents, axis=0) if latents else None
         indices_concat = np.concatenate(indices, axis=0) if indices else None
 
@@ -200,6 +204,7 @@ class InferenceEngine:
 
         return {
             'predictions': predictions_inverted,
+            'originals':originals_concat,
             'latents': latents_concat,
             'indices': indices_concat,
             'q': q_final,
@@ -213,6 +218,7 @@ class InferenceEngine:
         the output-domain y-transform and optionally invert q.
         """
         predictions = []
+        originals = []
         indices = []
         q_values = []
 
@@ -232,6 +238,7 @@ class InferenceEngine:
                     raise ValueError(f"Unknown mode: {mode}")
 
                 predictions.append(pred.cpu().numpy())
+                originals.append(batch['data_y_untransformed'].cpu().numpy())
 
                 if q_out is not None:
                     if isinstance(q_out, torch.Tensor):
@@ -243,6 +250,7 @@ class InferenceEngine:
                     indices.append(batch['data_index'].cpu().numpy())
 
         predictions_concat = np.concatenate(predictions, axis=0) if predictions else np.empty((0,))
+        originals_concat = np.concatenate(originals, axis=0) if originals else np.empty((0,))
         indices_concat = np.concatenate(indices, axis=0) if indices else None
 
         predictions_inverted = self._invert_predictions(predictions_concat)
@@ -254,6 +262,7 @@ class InferenceEngine:
 
         return {
             'predictions': predictions_inverted,
+            'originals': originals_concat,
             'indices': indices_concat,
             'q': q_final,
             'mode': mode,
@@ -364,16 +373,19 @@ class TXTWriter(OutputWriter):
 class PlotWriter(OutputWriter):
     """Generate and save diagnostic plots. The plotting scale (loglog) is configured at init."""
 
-    def __init__(self, output_path: str, plot_limit: int = 10, use_loglog: bool = False):
+    def __init__(self, output_path: str, plot_limit: int = 10, use_loglog: bool = False, plot_original: bool = False):
         super().__init__(output_path)
         self.plot_limit = plot_limit
         self.use_loglog = use_loglog
+        self.plot_original = plot_original
 
     def write(self, results: Dict[str, Any]):
         output_dir = Path(self.output_path)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         predictions = results.get('predictions', [])
+        if self.plot_original:
+            originals = results.get('originals', [])
         mode = results.get('mode', 'reconstruction')
 
         n_plots = min(self.plot_limit, len(predictions))
@@ -386,15 +398,26 @@ class PlotWriter(OutputWriter):
             pred = np.squeeze(predictions[i])
 
             if self.use_loglog:
-                ax.loglog(pred, linewidth=2)
+                if self.plot_original:
+                    ax.loglog(pred, linewidth=2, label='prediction')
+                    ax.loglog(originals[i].ravel(), linewidth=2, label='true')
+                else:
+                    ax.loglog(pred, linewidth=2)
                 ax.set_xscale("log")
             else:
-                ax.plot(pred, linewidth=2)
+                if self.plot_original:
+                    ax.plot(pred, linewidth=2, label='prediction')
+                    ax.plot(originals[i].ravel(), linewidth=2, label='true')
+                else:
+                    ax.plot(pred, linewidth=2)
 
             ax.set_xlabel('Index')
             ax.set_ylabel('Intensity')
             ax.set_title(f'{mode.capitalize()} - Sample {i}')
             ax.grid(True, alpha=0.3)
+            
+            if self.plot_original:
+                ax.legend()
 
             plot_path = output_dir / f"i{i:06d}_{mode}.png"
             plt.savefig(plot_path, dpi=150, bbox_inches='tight')
@@ -484,6 +507,7 @@ def run_inference(
     data_dir: str = ".",
     output_format: str = "h5",
     plot_limit: int = 10,
+    plot_original: bool = False,
     n_jobs_io: int = 8,
     sample_seed: int = 42,
     is_pair: bool = False,
@@ -607,7 +631,7 @@ def run_inference(
 
     if save_plot:
         plot_dir = str(Path(output_dir) / f"plots_{inference_mode}")
-        writers.append(PlotWriter(plot_dir, plot_limit=plot_limit, use_loglog=use_loglog))
+        writers.append(PlotWriter(plot_dir, plot_limit=plot_limit, use_loglog=use_loglog, plot_original=plot_original))
 
     for writer in writers:
         writer.write(results)

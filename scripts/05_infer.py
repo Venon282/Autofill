@@ -32,6 +32,12 @@ def parse_args() -> argparse.Namespace:
         help="Save reconstruction plots alongside data outputs.",
     )
     parser.add_argument(
+        "--plot_original",
+        action="store_true",
+        default=False,
+        help="Display the original signal with the reconstruct one."
+    )
+    parser.add_argument(
         "-d",
         "--data_path",
         type=str,
@@ -97,6 +103,7 @@ def parse_args() -> argparse.Namespace:
         default=1,
         help="Random seed for sampling.",
     )
+    
     parser.add_argument("-p","--no_progressbar",  dest='progressbar', action='store_false')
     return parser.parse_args()
 
@@ -143,6 +150,7 @@ def main() -> None:
         data_dir=args.data_dir or ".",
         output_format=args.format,
         plot_limit=args.plot_limit,
+        plot_original=args.plot_original,
         n_jobs_io=args.n_jobs_io,
         sample_seed=args.sample_seed,
         indices_path=args.indices_path,
