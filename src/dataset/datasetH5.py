@@ -53,7 +53,7 @@ class HDF5Dataset(Dataset):
         with h5py.File(self.hdf5_file, 'r') as hdf:
             q_key = "data_q" if "data_q" in hdf else "data_wavelength"
             if q_key not in hdf:
-                raise ValueError(f"Could not find 'data_q' or 'data_wavelength' in {hdf5_file}")
+                raise ValueError(f"Could not find 'data_q' or 'data_wavelength' in {hdf5_file}, {hdf.keys()}")
 
             temp_data_q = hdf[q_key]
             first_q = temp_data_q[0]

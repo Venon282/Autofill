@@ -46,6 +46,13 @@ def parse_args() -> argparse.Namespace:
              "Need to be a simple H5 dataset, not pair dataset for PairVAE models.",
     )
     parser.add_argument(
+        "-dpp",
+        "--data_pair_path",
+        type=str,
+        required=False,
+        help="The pair dataset only usefull of --plot-original",
+    )
+    parser.add_argument(
         "-cd",
         "--conversion_dict",
         type=str,
@@ -137,7 +144,7 @@ def main() -> None:
         raise ValueError("Cannot use --indices_path with --sample_frac other than 1.0")
 
     logger.info("Loading %s model from checkpoint: %s", model_type, args.checkpoint)
-
+    is_pair=(model_type == "pair_vae")
     run_inference(
         output_dir=args.outputdir,
         save_plot=args.plot,
@@ -151,10 +158,11 @@ def main() -> None:
         output_format=args.format,
         plot_limit=args.plot_limit,
         plot_original=args.plot_original,
+        data_pair_path=args.data_pair_path,
         n_jobs_io=args.n_jobs_io,
         sample_seed=args.sample_seed,
         indices_path=args.indices_path,
-        is_pair=(model_type == "pair_vae"),
+        is_pair=is_pair,
         mode=args.mode,
         show_progressbar=args.progressbar,
     )

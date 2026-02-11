@@ -25,3 +25,5 @@ config_locales/
 train_results/
 config/*
 todo.md
+commands.md
+test.py

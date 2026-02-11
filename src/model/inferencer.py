@@ -373,52 +373,106 @@ class TXTWriter(OutputWriter):
 class PlotWriter(OutputWriter):
     """Generate and save diagnostic plots. The plotting scale (loglog) is configured at init."""
 
-    def __init__(self, output_path: str, plot_limit: int = 10, use_loglog: bool = False, plot_original: bool = False):
+    def __init__(self, output_path: str, plot_limit: int = 10, use_loglog: bool = False, plot_original: bool = False,
+                 data_pair_path:str=None, input_domain:str=None, output_domain:str=None,
+                is_pair:bool=False):
         super().__init__(output_path)
         self.plot_limit = plot_limit
         self.use_loglog = use_loglog
         self.plot_original = plot_original
+        self.data_pair_path = data_pair_path
+        self.is_pair = is_pair
+        self.input_domain = input_domain
+        self.output_domain=output_domain
+        
+    def _pairPlot(self,i, indice, prediction, original, mode):
+        fig, axs = plt.subplots(2, 1, figsize=(10, 6))
+        plot_original = self.plot_original
+        use_loglog = self.use_loglog
+        if self.input_domain != self.output_domain:
+            if self.data_pair_path:
+                with h5py.File(self.data_pair_path, 'r') as f:
+                    key_input_indexs = 'data_index_'+self.input_domain
+                    good_indice = np.where(f[key_input_indexs][:] == indice)[0]
+                    key_output_signal = 'data_y_'+ self.output_domain
+                    true_original = f[key_output_signal][good_indice][0]
+            else:
+                self.plot_original = False
+                true_original = None
+            
+        else:
+            true_original = original
+            
+        self._noPairPlot(i, prediction, true_original, mode + ' - ' + self.output_domain,  fig=fig, ax=axs[0])
+        if self.input_domain != self.output_domain:
+            self.plot_original = False
+            self.use_loglog = not self.use_loglog
+            self._noPairPlot(i, prediction=original, original=None, mode=mode + ' - ' + self.input_domain,  fig=fig, ax=axs[1])
+            
+        self.plot_original = plot_original
+        self.use_loglog = use_loglog
+        return fig
+        
+        
+    def _noPairPlot(self,i, prediction, original, mode,  fig=None, ax=None):
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(10, 6))
+
+        pred = np.squeeze(prediction)
+
+        if self.use_loglog:
+            if self.plot_original:
+                ax.loglog(original.ravel(), linewidth=2, label='true')
+                ax.loglog(pred, linewidth=2, label='prediction')
+            else:
+                ax.loglog(pred, linewidth=2)
+            ax.set_xscale("log")
+        else:
+            if self.plot_original:
+                ax.plot(original.ravel(), linewidth=2, label='true')
+                ax.plot(pred, linewidth=2, label='prediction')
+            else:
+                ax.plot(pred, linewidth=2)
+
+        ax.set_xlabel('Index')
+        ax.set_ylabel('Intensity')
+        ax.set_title(f'{mode.capitalize()} - Sample {i}')
+        ax.grid(True, alpha=0.3)
+        
+        if self.plot_original:
+            ax.legend()
+
+        return fig
 
     def write(self, results: Dict[str, Any]):
         output_dir = Path(self.output_path)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         predictions = results.get('predictions', [])
-        if self.plot_original:
-            originals = results.get('originals', [])
+        originals = results['originals']
         mode = results.get('mode', 'reconstruction')
+        indices = results['indices']
 
         n_plots = min(self.plot_limit, len(predictions))
 
         logger.info(f"Generating {n_plots} plots (loglog={self.use_loglog})...")
 
         for i in range(n_plots):
-            fig, ax = plt.subplots(figsize=(10, 6))
-
-            pred = np.squeeze(predictions[i])
-
-            if self.use_loglog:
-                if self.plot_original:
-                    ax.loglog(pred, linewidth=2, label='prediction')
-                    ax.loglog(originals[i].ravel(), linewidth=2, label='true')
-                else:
-                    ax.loglog(pred, linewidth=2)
-                ax.set_xscale("log")
+            if self.is_pair:
+                fig = self._pairPlot(
+                    i=i,
+                    indice=indices[i],
+                    prediction=predictions[i],
+                    original=originals[i],
+                    mode=mode,
+                )
             else:
-                if self.plot_original:
-                    ax.plot(pred, linewidth=2, label='prediction')
-                    ax.plot(originals[i].ravel(), linewidth=2, label='true')
-                else:
-                    ax.plot(pred, linewidth=2)
-
-            ax.set_xlabel('Index')
-            ax.set_ylabel('Intensity')
-            ax.set_title(f'{mode.capitalize()} - Sample {i}')
-            ax.grid(True, alpha=0.3)
-            
-            if self.plot_original:
-                ax.legend()
-
+                fig = self._noPairPlot(
+                    i=i,
+                    prediction=predictions[i],
+                    original=originals[i],
+                    mode=mode,
+                )
             plot_path = output_dir / f"i{i:06d}_{mode}.png"
             plt.savefig(plot_path, dpi=150, bbox_inches='tight')
             plt.close(fig)
@@ -508,6 +562,7 @@ def run_inference(
     output_format: str = "h5",
     plot_limit: int = 10,
     plot_original: bool = False,
+    data_pair_path:str=None,
     n_jobs_io: int = 8,
     sample_seed: int = 42,
     is_pair: bool = False,
@@ -631,7 +686,7 @@ def run_inference(
 
     if save_plot:
         plot_dir = str(Path(output_dir) / f"plots_{inference_mode}")
-        writers.append(PlotWriter(plot_dir, plot_limit=plot_limit, use_loglog=use_loglog, plot_original=plot_original))
+        writers.append(PlotWriter(plot_dir, plot_limit=plot_limit, use_loglog=use_loglog, plot_original=plot_original, output_domain=output_domain, data_pair_path=data_pair_path, is_pair=is_pair, input_domain=input_domain))
 
     for writer in writers:
         writer.write(results)

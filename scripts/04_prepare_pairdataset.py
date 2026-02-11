@@ -399,6 +399,7 @@ class PairingHDF5Converter:
         pair_index = 0
         for saxs_idx, saxs_values in meta_saxs.items():
             if saxs_values in inverse_les:
+                
                 pairs.append((pair_index, saxs_idx, inverse_les[saxs_values]))
                 pair_index += 1
             else:
