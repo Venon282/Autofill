@@ -199,8 +199,7 @@ class InferenceEngine:
         originals_concat = np.concatenate(originals, axis=0) if originals else np.empty((0,))
         latents_concat = np.concatenate(latents, axis=0) if latents else None
         indices_concat = np.concatenate(indices, axis=0) if indices else None
-        for key, values in batch['metadata'].items():
-            metadatas[key] = np.array(values)
+        metadatas = {key: np.array(values) for key, values in metadatas.items()}
 
         predictions_inverted = self._invert_predictions(predictions_concat)
         if predictions_inverted.ndim == 3 and predictions_inverted.shape[1] == 1: # (n_signals, 1, signal_size)
@@ -275,8 +274,7 @@ class InferenceEngine:
         predictions_concat = np.concatenate(predictions, axis=0) if predictions else np.empty((0,))
         originals_concat = np.concatenate(originals, axis=0) if originals else np.empty((0,))
         indices_concat = np.concatenate(indices, axis=0) if indices else None
-        for key, values in batch['metadata'].items():
-            metadatas[key] = np.array(values)
+        metadatas = {key: np.array(values) for key, values in metadatas.items()}
         
         predictions_inverted = self._invert_predictions(predictions_concat)
         if predictions_inverted.ndim == 3 and predictions_inverted.shape[1] == 1: # (n_signals, 1, signal_size)
