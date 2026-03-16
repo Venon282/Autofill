@@ -136,11 +136,3 @@ docs/_build/html/index.html
 
 Ce projet est distribué sous licence **Apache 2.0**.
 Voir le fichier `LICENSE` pour plus d’informations.
-
-
-### Contact
-
-Pour toute question ou problème, n’hésitez pas à contacter :
-
-- **Julien Rabault** (julien.rabault@irit.fr)
-- **Caroline de Pourtalès** (caroline.de-pourtales@irit.fr)
