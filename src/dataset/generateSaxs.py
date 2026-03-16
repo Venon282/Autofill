@@ -9,8 +9,8 @@ sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 from py_libraries.data.generation.saxs import UnitConvertor, main
 
 if __name__ == '__main__':
-    les_h5_path = r'D:\les_to_caracteristics\dataset\sphere_simulation_uniform_dielectric_c7-16_s1-1000_nt\les.h5'
-    material = 'latex'
+    les_h5_path = r'D:\les_to_caracteristics\dataset\sphere_simulation_uniform_widthLog_dielectric_c7-16_s1-1000_nt\les.h5'
+    material = 'sio2'
     shape = 'sphere'
     parameters_operator = 'stack'
     with h5py.File(les_h5_path, 'r') as f:

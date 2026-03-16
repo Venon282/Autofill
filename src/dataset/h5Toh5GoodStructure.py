@@ -57,8 +57,12 @@ def _process(
                         data = f_src[value_][:]
                     elif from_.startswith('op_'):
                         data = getattr(op, from_.split('_')[1])(data, value_)
+                    elif from_ == 'repeat_array':
+                        data = np.repeat(data[np.newaxis, :], value_ if isinstance(value_, int) else len(f_src[value_]) if isinstance(value_, str) else len(f_src[next(iter(f_src.keys()))]), axis=0)
                     elif from_ == 'attrs':
                         data = f_src.attrs[value_]
+                    elif from_ == 'value':
+                        data = value_
                 
                 appendFunction(f_dest, dest_col, data)
 
@@ -114,24 +118,42 @@ def process(
     _process(**arguments)
 
 if __name__ == '__main__':
-    file_type = Type.LES
-    h5_path = r'E:\signals\sphere_les_ag_new_meta.h5'
-    #h5_path = r'E:\signals\saxs_au_sphere.h5'
-    # new_h5_path = r'E:\signals\sphere_les_ag_new_meta2.h5'
-    new_h5_path = r'C:\Users\ET281306\Downloads\delete_me.h5'
+    file_type = Type.SAXS
+    #! les_corresponding_attrs MODIFY when change material, technique orshape
+    shape = 'sphere'
+    technique = 'saxs'
+    material = 'sio2'
+    #h5_path = r'/mnt/beegfs/scratch/et281306/Autofill/DATA/saxs_latex_sphere.h5'
+    #new_h5_path = r'/mnt/beegfs/scratch/et281306/Autofill/DATA/saxs_latex_sphere_clean.h5'
+    h5_path = fr'E:\autofill\data\{technique}_{material}_{shape}.h5'
+    new_h5_path = fr'E:\autofill\data\{technique}_{material}_{shape}_clean.h5'
     overwrite = True
     
     with h5py.File(h5_path, 'r') as f:
         print(f.keys())
         print(f.attrs.keys())
     
+    #? paul
+    #les_corresponding_cols = {
+    #   'csv_index':'csv_index',
+    #   'concentration':'concentration',
+    #   'data_wavelength':'data_wavelength',
+    #   'data_y':'data_y',
+    #   'diameter_nm':'Diameter_nm',
+    #   'length_nm':'Diameter_nm'
+    #}
+    
+    #? 2fast
     les_corresponding_cols = {
-       'csv_index':'csv_index',
-       'concentration':'concentration',
-       'data_wavelength':'data_wavelength',
-       'data_y':'data_y',
-       'diameter_nm':'Diameter_nm',
-       'length_nm':'Diameter_nm'
+       'csv_index':None,
+       'concentration':'concentration_part_cm_3',
+       'data_wavelength':{
+         'from':['attrs', 'repeat_array'],
+         'value':['wavelength', 'concentration_part_cm_3']
+       },
+       'data_y':'transmission',
+       'diameter_nm':'width',
+       'length_nm':'width'
     }
     
     saxs_corresponding_cols = {
@@ -151,7 +173,7 @@ if __name__ == '__main__':
     
     corresponding_cols = les_corresponding_cols if file_type == Type.LES else saxs_corresponding_cols if file_type == Type.SAXS else (_ for _ in ()).throw(Exception(''))
     
-    corresponding_attrs = {
+    saxs_corresponding_attrs = {
         'material':{
             'from':'attrs',
             'value':'material'
@@ -165,6 +187,25 @@ if __name__ == '__main__':
             'value':'shape'
         }
     }
+    
+
+
+    les_corresponding_attrs = {
+        'material':{
+            'from':'value',
+            'value':material
+        }, 
+        'technique':{
+            'from':'value',
+            'value':technique
+        }, 
+        'shape':{
+            'from':'value',
+            'value':shape
+        }
+    }
+    
+    corresponding_attrs = les_corresponding_attrs if file_type == Type.LES else saxs_corresponding_attrs if file_type == Type.SAXS else (_ for _ in ()).throw(Exception(''))
     
     process(
         file_type=file_type,

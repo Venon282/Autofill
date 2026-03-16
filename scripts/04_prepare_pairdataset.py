@@ -19,9 +19,9 @@ import random
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.logging_utils import get_logger
-
-
+from src.logging_utils import get_logger, setup_logging
+import logging
+setup_logging(level=logging.DEBUG)
 logger = get_logger(__name__)
 
 
@@ -306,7 +306,6 @@ class PairingHDF5Converter:
                 "No concentration key found in HDF5 file "
                 "(expected 'concentration_original' or 'concentration')."
             )
-
         return np.round(concentration, -3).astype(int)
 
     @staticmethod
@@ -398,11 +397,15 @@ class PairingHDF5Converter:
 
         pair_index = 0
         for saxs_idx, saxs_values in meta_saxs.items():
+            
+            
             if saxs_values in inverse_les:
                 
                 pairs.append((pair_index, saxs_idx, inverse_les[saxs_values]))
                 pair_index += 1
             else:
+                print(saxs_values, next(iter(inverse_les.keys())))
+                raise
                 unpaired_saxs.append(saxs_idx)
 
         for les_idx, les_values in meta_les.items():
@@ -500,6 +503,7 @@ class PairingHDF5Converter:
         concentration_les_list: List[float] = []
         if not self.progressbar:
             logger.info("Processing pairs..")
+        logger.debug(f'{len(pairs)=}')
         for _, saxs_idx, les_idx in tqdm(pairs, desc="Processing pairs", disable= not self.progressbar):
             y_saxs_list.append(y_saxs[saxs_idx])
             q_saxs_list.append(q_saxs[saxs_idx])
@@ -564,7 +568,13 @@ class PairingHDF5Converter:
                 q_les,
             ) = self._extract_data(hdf_saxs, hdf_les)
 
+        logger.debug(f'{len(meta_saxs.keys())=}')
+        logger.debug(f'{len(meta_les.keys())=}')
+        logger.debug(f'{len(meta_saxs)=}, {len(y_saxs)=}, {len(q_saxs)=}, {len(meta_les)=}, {len(y_les)=}, {len(q_les)=}')
+        
         pairs = self._build_pairs(meta_saxs, meta_les)
+        logger.info(f'{len(pairs)} pairs found')
+        
         train_pairs, val_pairs, test_pairs = self._split_pairs(pairs)
         self._save_split_indices(train_pairs, val_pairs, test_pairs)
         self._compose_hdf5(

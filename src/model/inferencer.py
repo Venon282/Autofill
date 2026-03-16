@@ -193,6 +193,8 @@ class InferenceEngine:
         indices_concat = np.concatenate(indices, axis=0) if indices else None
 
         predictions_inverted = self._invert_predictions(predictions_concat)
+        if predictions_inverted.ndims == 3 and predictions_inverted.shape[1] == 1: # (n_signals, 1, signal_size)
+            predictions_inverted = predictions_inverted.squeeze(1)
 
         q_final = None
         if q_values:
@@ -254,6 +256,8 @@ class InferenceEngine:
         indices_concat = np.concatenate(indices, axis=0) if indices else None
 
         predictions_inverted = self._invert_predictions(predictions_concat)
+        if predictions_inverted.ndims == 3 and predictions_inverted.shape[1] == 1: # (n_signals, 1, signal_size)
+            predictions_inverted = predictions_inverted.squeeze(1)
 
         q_final = None
         if q_values:
