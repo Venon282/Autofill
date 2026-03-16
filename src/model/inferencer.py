@@ -160,6 +160,7 @@ class InferenceEngine:
         latents = []
         indices = []
         q_values = []
+        metadatas = {}
 
         with torch.no_grad():
             for batch in dataloader:
@@ -186,14 +187,23 @@ class InferenceEngine:
                     indices.append(batch['data_index'].cpu().numpy())
                     
                 originals.append(batch['data_y_untransformed'].cpu().numpy())
+                
+                # add metadatas
+                for key, values in batch['metadata'].items():
+                    if key not in metadatas: 
+                        metadatas[key] = list(values) 
+                    else: 
+                        metadatas[key].extend(list(values))
 
         predictions_concat = np.concatenate(predictions, axis=0) if predictions else np.empty((0,))
         originals_concat = np.concatenate(originals, axis=0) if originals else np.empty((0,))
         latents_concat = np.concatenate(latents, axis=0) if latents else None
         indices_concat = np.concatenate(indices, axis=0) if indices else None
+        for key, values in batch['metadata'].items():
+            metadatas[key] = np.array(values)
 
         predictions_inverted = self._invert_predictions(predictions_concat)
-        if predictions_inverted.ndims == 3 and predictions_inverted.shape[1] == 1: # (n_signals, 1, signal_size)
+        if predictions_inverted.ndim == 3 and predictions_inverted.shape[1] == 1: # (n_signals, 1, signal_size)
             predictions_inverted = predictions_inverted.squeeze(1)
 
         q_final = None
@@ -204,7 +214,7 @@ class InferenceEngine:
         mode_spec = getattr(getattr(self.model, 'model_cfg', None), 'spec', getattr(self.model, 'spec', ModelSpec.SAXS))
         mode_key = f"recon_{mode_spec.value if isinstance(mode_spec, ModelSpec) else str(mode_spec)}"
 
-        return {
+        results = {
             'predictions': predictions_inverted,
             'originals':originals_concat,
             'latents': latents_concat,
@@ -212,6 +222,9 @@ class InferenceEngine:
             'q': q_final,
             'mode': mode_key,
         }
+        
+        results.update(metadatas)
+        return results
 
     def run_pairvae_inference(self, dataloader: DataLoader, mode: str) -> Dict[str, Any]:
         """Run inference for PairVAE for a specific translation mode.
@@ -223,6 +236,7 @@ class InferenceEngine:
         originals = []
         indices = []
         q_values = []
+        metadatas = {}
 
         with torch.no_grad():
             for batch in dataloader:
@@ -250,13 +264,22 @@ class InferenceEngine:
 
                 if 'data_index' in batch:
                     indices.append(batch['data_index'].cpu().numpy())
+                
+                # add metadatas
+                for key, values in batch['metadata'].items():
+                    if key not in metadatas: 
+                        metadatas[key] = list(values) 
+                    else: 
+                        metadatas[key].extend(list(values))
 
         predictions_concat = np.concatenate(predictions, axis=0) if predictions else np.empty((0,))
         originals_concat = np.concatenate(originals, axis=0) if originals else np.empty((0,))
         indices_concat = np.concatenate(indices, axis=0) if indices else None
-
+        for key, values in batch['metadata'].items():
+            metadatas[key] = np.array(values)
+        
         predictions_inverted = self._invert_predictions(predictions_concat)
-        if predictions_inverted.ndims == 3 and predictions_inverted.shape[1] == 1: # (n_signals, 1, signal_size)
+        if predictions_inverted.ndim == 3 and predictions_inverted.shape[1] == 1: # (n_signals, 1, signal_size)
             predictions_inverted = predictions_inverted.squeeze(1)
 
         q_final = None
@@ -264,13 +287,17 @@ class InferenceEngine:
             q_concat = np.concatenate(q_values, axis=0)
             q_final = self._invert_q(q_concat)
 
-        return {
+        results = {
             'predictions': predictions_inverted,
             'originals': originals_concat,
             'indices': indices_concat,
             'q': q_final,
             'mode': mode,
         }
+        
+        results.update(metadatas)
+        
+        return results
 
     def _invert_predictions(self, data: np.ndarray) -> np.ndarray:
         inverted = []
