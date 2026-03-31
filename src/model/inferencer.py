@@ -204,6 +204,9 @@ class InferenceEngine:
         predictions_inverted = self._invert_predictions(predictions_concat)
         if predictions_inverted.ndim == 3 and predictions_inverted.shape[1] == 1: # (n_signals, 1, signal_size)
             predictions_inverted = predictions_inverted.squeeze(1)
+            
+        if originals_concat.ndim == 3 and originals_concat.shape[1] == 1: # (n_signals, 1, signal_size)
+            originals_concat = originals_concat.squeeze(1)
 
         q_final = None
         if q_values:
@@ -279,6 +282,8 @@ class InferenceEngine:
         predictions_inverted = self._invert_predictions(predictions_concat)
         if predictions_inverted.ndim == 3 and predictions_inverted.shape[1] == 1: # (n_signals, 1, signal_size)
             predictions_inverted = predictions_inverted.squeeze(1)
+        if originals_concat.ndim == 3 and originals_concat.shape[1] == 1: # (n_signals, 1, signal_size)
+            originals_concat = originals_concat.squeeze(1)
 
         q_final = None
         if q_values:
@@ -423,8 +428,16 @@ class PlotWriter(OutputWriter):
                 with h5py.File(self.data_pair_path, 'r') as f:
                     key_input_indexs = 'data_index_'+self.input_domain
                     good_indice = np.where(f[key_input_indexs][:] == indice)[0]
-                    key_output_signal = 'data_y_'+ self.output_domain
-                    true_original = f[key_output_signal][good_indice][0]
+                    if len(good_indice) == 0:
+                        logger.warning(
+                            f"Index {indice} not found in '{key_input_indexs}' "
+                            f"of {self.data_pair_path}. Skipping true_original for sample {i}."
+                        )
+                        true_original = None
+                        self.plot_original = False
+                    else:
+                        key_output_signal = 'data_y_' + self.output_domain
+                        true_original = f[key_output_signal][good_indice][0]
             else:
                 self.plot_original = False
                 true_original = None
