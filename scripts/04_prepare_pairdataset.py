@@ -347,7 +347,11 @@ class PairingHDF5Converter:
         }
 
         y_dict: ArrayDict = {int(idx): y for idx, y in zip(indices, data_y)}
-        q_dict: ArrayDict = {int(idx): q for idx, q in zip(indices, q_values)}
+
+        if q_values.ndim == 1:
+            q_dict = {int(idx): q_values for idx in indices}
+        else:
+            q_dict = {int(idx): q for idx, q in zip(indices, q_values)}
 
         return meta_dict, y_dict, q_dict
 
